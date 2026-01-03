@@ -21,8 +21,11 @@ Key ideas explored:
 - State space:
   - Robot position `(x, y)`
   - Goal position `(x_goal, y_goal)`
+  - Velocity and orientation `(v, theta)` : `minV <= v <= maxV` and `-pi <= theta < pi`
+  - Position of obstacles namely red blood cells and white blood cells `{"red": [(x_red, y_red)], "white": [(x_white, y_white)]}`
 - Action space:
-  - Continuous displacement `(dx, dy)`
+  - Changes to the orientation relative to the $x$-axis `dtheta`
+  - Variation to the velocity `dv`
 - Reward:
   - Negative distance to the goal
   - Positive reward when the goal is reached
@@ -80,6 +83,7 @@ python vizualize.py
 
 ## Future work
 
+- The time limit is represented not as a number of steps but as fuel being burned depending on the velocity and orientation variations
 - Add obstacles and complex environments
 - Extend to 3D control
 - Sim-to-real transfer experiments
