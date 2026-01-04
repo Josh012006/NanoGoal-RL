@@ -6,12 +6,13 @@ from typing import Optional
 class NanoEnv(gym.Env):
 
     def __init__(self, size: int = 1000, minV: float = 0.2, maxV: float = 3.0, maxRed: int = 8, maxWhite: int = 4):
-        self.size = size # grid's size : preferably really large to allow a lot of modelisation to the environment
+        self._size = size # grid's size : preferably really large to allow a lot of modelisation to the environment
         self._vessel_topology = np.zeros(shape=(size, size), dtype=int) # the vessels layout as a grid with 0 being the empty spaces and 1 being occupied ones by walls
 
         # The minimum and maximum velocity. They are useful to define real-life constraint on the agent
-        self.minV = minV
-        self.maxV = maxV
+        self._minV = minV
+        self._maxV = maxV
+
         # The maximum number of red and white cells in the simulation. AN exact number will be chosen randomly
         self._maxRed = maxRed
         self._maxWhite = maxWhite
@@ -79,6 +80,19 @@ class NanoEnv(gym.Env):
             )
         }
 
+
+    def _generate_logical_topology(self, seed: Optional[int] = None):
+        """Generates a size x size matrix describing the vessel's topology. It must be a valid topology
+            but it must also have a bit of diversity (randomness).
+        
+        Args:
+            seed: Random seed for reproductible topology
+        Returns:
+            matrix: a numpy array describing the generated topology
+        """
+
+        pass
+
     
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
         """Start a new episode.
@@ -88,8 +102,6 @@ class NanoEnv(gym.Env):
             options: Additional configuration namely 
                 - nbRed which is the wanted number of red cells with 0 <= nbRed <= maxRed
                 - nbWhite which is the wanted number of white cells with 0 <= nbWhite <= maxWhite
-                - minV which is the minimum velocity wanted with 0.1 <= minV <= 0.6
-                - maxV which is the maximum velocity wanted with 0.1 <= maxV <= 5
 
         Returns:
             tuple: (observation, info) for the initial state
@@ -98,7 +110,19 @@ class NanoEnv(gym.Env):
         # Seed the random number generator
         super().reset(seed=seed)
 
+        # Generate a pseudo-random but also valid vessel topology for the episode
+        self._vessel_topology = self._generate_logical_topology(seed)
 
-        # Set the different key variables in a random yet valid way
-        
+        # Randomly generated target and agent locations in regard to the topology 
+        #self._agent_location = np.array([-1, -1], dtype=np.float32)
+        #self._target_location = np.array([-1, -1], dtype=np.float32)
+
+        # Velocity and orientation at the start of an episode
+        self._velocity = 0.0
+        #self._orientation = 0.0  can be generated randomly
+
+        # Random red and white cells locations in regard to the topologya nd the options nbRed and nbWhite
+        #self._red_cells = np.full(shape=(maxRed, 2), fill_value=-1, dtype=np.float32)
+        #self._white_cells = np.full(shape=(maxWhite, 2), fill_value=-1, dtype=np.float32)
+    
 
