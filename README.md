@@ -84,7 +84,7 @@ python vizualize.py
 ## Future work
 
 - The time limit is represented not as a number of steps but as fuel being burned depending on the velocity and orientation variations
-- Add obstacles and complex environments
+- More realist and complex environments
 - Extend to 3D control
 - Sim-to-real transfer experiments
 - Multi-agent goal conditioned control
