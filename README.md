@@ -85,6 +85,8 @@ python vizualize.py
 
 - The time limit is represented not as a number of steps but as fuel being burned depending on the velocity and orientation variations
 - More realist and complex environments
+- Give more life to the red and white cells. For example, touching a white cell decreases the agent's velocity
+- Be more strict on the goal achievement. For example, instead of just trying to attain the target, try to have a low velocity at arrival and a certain orientation
 - Extend to 3D control
 - Sim-to-real transfer experiments
 - Multi-agent goal conditioned control

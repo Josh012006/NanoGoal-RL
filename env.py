@@ -7,17 +7,17 @@ from utils import main_related_component
 
 class NanoEnv(gym.Env):
 
-    def __init__(self, size: int = 1000, minV: float = 0.2, maxV: float = 3.0, maxRed: int = 8, maxWhite: int = 4):
+    def __init__(self, size: int = 1000, min_v: float = 0.2, max_v: float = 3.0, max_red: int = 8, max_white: int = 4):
         self._size = size # grid's size : preferably really large to allow a lot of modelisation to the environment
         self._vessel_topology = np.zeros(shape=(size, size), dtype=int) # the vessels layout as a grid with 0 being the empty spaces and 1 being occupied ones by walls
 
         # The minimum and maximum velocity. They are useful to define real-life constraint on the agent
-        self._minV = minV
-        self._maxV = maxV
+        self._min_v = min_v
+        self._max_v = max_v
 
         # The maximum number of red and white cells in the simulation. AN exact number will be chosen randomly
-        self._maxRed = maxRed
-        self._maxWhite = maxWhite
+        self._max_red = max_red
+        self._max_white = max_white
 
         # Agent and target initial locations
         self._agent_location = np.array([-1, -1], dtype=np.float32)
@@ -28,8 +28,8 @@ class NanoEnv(gym.Env):
         self._orientation = 0.0
 
         # Blood and white cells initial locations
-        self._red_cells = np.full(shape=(maxRed, 2), fill_value=-1, dtype=np.float32)
-        self._white_cells = np.full(shape=(maxWhite, 2), fill_value=-1, dtype=np.float32)
+        self._red_cells = np.full(shape=(max_red, 2), fill_value=-1, dtype=np.float32)
+        self._white_cells = np.full(shape=(max_white, 2), fill_value=-1, dtype=np.float32)
 
 
         # What the agent can observe
@@ -37,11 +37,11 @@ class NanoEnv(gym.Env):
             {
                 "agent" : gym.spaces.Box(-1.0, float(size), shape=(2,), dtype=np.float32), # -1.0 and size will be used to reprensent element outside of the visible box
                 "target" : gym.spaces.Box(-1.0, float(size), shape=(2,), dtype=np.float32),
-                "mvt" : gym.spaces.Box([minV, -np.pi], [maxV, np.pi], shape=(2,), dtype=np.float32),
+                "mvt" : gym.spaces.Box([min_v, -np.pi], [max_v, np.pi], shape=(2,), dtype=np.float32),
                 "obstacles": gym.spaces.Dict(
                     {
-                        "red" : gym.spaces.Box(-1.0, float(size), shape=(maxRed, 2), dtype=np.float32),
-                        "white" : gym.spaces.Box(-1.0, float(size), shape=(maxWhite, 2), dtype=np.float32)
+                        "red" : gym.spaces.Box(-1.0, float(size), shape=(max_red, 2), dtype=np.float32),
+                        "white" : gym.spaces.Box(-1.0, float(size), shape=(max_white, 2), dtype=np.float32)
                     }
                 )
             }
@@ -49,7 +49,7 @@ class NanoEnv(gym.Env):
 
 
         # The actions available to the agent
-        self.action_space = gym.spaces.Box([minV, -np.pi], [maxV, np.pi], shape=(2,), dtype=np.float32)
+        self.action_space = gym.spaces.Box([min_v, -np.pi], [max_v, np.pi], shape=(2,), dtype=np.float32)
 
 
     
@@ -108,8 +108,8 @@ class NanoEnv(gym.Env):
         Args:
             seed: Random seed for reproducible episodes
             options: Additional configuration namely 
-                - nbRed which is the wanted number of red cells with 0 <= nbRed <= maxRed
-                - nbWhite which is the wanted number of white cells with 0 <= nbWhite <= maxWhite
+                - nb_red which is the wanted number of red cells with 0 <= nb_red <= max_red
+                - nb_white which is the wanted number of white cells with 0 <= nb_white <= max_white
 
         Returns:
             tuple: (observation, info) for the initial state
@@ -142,22 +142,22 @@ class NanoEnv(gym.Env):
         self._orientation = self.np_random.uniform(-np.pi, np.pi)
 
         # Random red and white cells locations in regard to the topology and the options nbRed and nbWhite
-        nbRed = self.np_random.integers(0, self._maxRed)
-        if options != None and "nbRed" in options:
-            nbRed = max(0, options["nbRed"])
-        nbRed = min(len(available_space) // 2, min(self._maxRed, nbRed))
-        self._red_cells = np.full(shape=(self._maxRed, 2), fill_value=-1, dtype=np.float32)
-        for i in range(nbRed):
+        nb_red = self.np_random.integers(0, self._max_red)
+        if options != None and "nb_red" in options:
+            nb_red = max(0, options["nb_red"])
+        nb_red = min(len(available_space) // 2, min(self._max_red, nb_red))
+        self._red_cells = np.full(shape=(self._max_red, 2), fill_value=-1, dtype=np.float32)
+        for i in range(nb_red):
             drawn_int = self.np_random.integers(0, len(available_space))
             self._red_cells[i] = list(available_space[drawn_int])
             available_space.pop(drawn_int)
         
-        nbWhite = self.np_random.integers(0, self._maxWhite)
-        if options != None and "nbWhite" in options:
-            nbWhite = max(0, options["nbWhite"])
-        nbWhite = min(len(available_space), min(self._maxWhite, nbWhite))
-        self._white_cells = np.full(shape=(self._maxWhite, 2), fill_value=-1, dtype=np.float32)
-        for i in range(nbWhite):
+        nb_white = self.np_random.integers(0, self._max_white)
+        if options != None and "nb_white" in options:
+            nb_white = max(0, options["nb_white"])
+        nb_white = min(len(available_space), min(self._max_white, nb_white))
+        self._white_cells = np.full(shape=(self._max_white, 2), fill_value=-1, dtype=np.float32)
+        for i in range(nb_white):
             drawn_int = self.np_random.integers(0, len(available_space))
             self._red_cells[i] = list(available_space[drawn_int])
             available_space.pop(drawn_int)
@@ -168,6 +168,19 @@ class NanoEnv(gym.Env):
 
         return observation, info
     
-    
+    def step(self, action):
+        """Execute one timestep within the environment.
+
+        Args:
+            action: The action to take, namely a list in the format [float, float] where the first component is 
+                the component to add to the velocity and the second one is the component to add to
+                the orientation. Both can be negative.
+
+        Returns:
+            tuple: (observation, reward, terminated, truncated, info)
+        """
+        
+        delta_v = action[0]
+        delta_theta = action[1]
     
 
