@@ -11,11 +11,27 @@ class NanoEnv(gym.Env):
         self._size = size # grid's size : preferably really large to allow a lot of modelisation to the environment
         self._vessel_topology = np.zeros(shape=(size, size), dtype=int) # the vessels layout as a grid with 0 being the empty spaces and 1 being occupied ones by walls
 
+        # Entity characteristics
+        self.__agent_radius = 0.25
+        self.__cell_radius = 0.15
+        self.__target_radius = 0.4
+
+        # Penalty collision
+        self.__penalty_red_cell = -0.2
+        self.__penalty_white_cell = -1.0
+
+        # Time management
+        self._time = 0
+        self.__timestep = 0.05 # the duration of one step in seconds
+        self.__timelimit = 0
+
         # The minimum and maximum velocity. They are useful to define real-life constraint on the agent
         self._min_v = min_v
         self._max_v = max_v
 
-        # The maximum number of red and white cells in the simulation. AN exact number will be chosen randomly
+        # The number of red and white cells in the simulation. An exact number will be chosen randomly
+        self._nb_red = 0
+        self._nb_white = 0
         self._max_red = max_red
         self._max_white = max_white
 
@@ -78,7 +94,7 @@ class NanoEnv(gym.Env):
         """
         return {
             "distance": np.linalg.norm(
-                self._agent_location - self._target_location, ord=1
+                self._agent_location - self._target_location
             )
         }
 
@@ -141,11 +157,16 @@ class NanoEnv(gym.Env):
         self._velocity = 0.0
         self._orientation = self.np_random.uniform(-np.pi, np.pi)
 
-        # Random red and white cells locations in regard to the topology and the options nbRed and nbWhite
+        # Set the time limit 
+        d0 = np.linalg.norm(self._agent_location - self._target_location)
+        self.__timelimit = min(3 + 2 * d0, 30)
+
+        # Random red and white cells locations in regard to the topology and the options nb_red and nb_white
         nb_red = self.np_random.integers(0, self._max_red)
         if options != None and "nb_red" in options:
             nb_red = max(0, options["nb_red"])
         nb_red = min(len(available_space) // 2, min(self._max_red, nb_red))
+        self._nb_red = nb_red
         self._red_cells = np.full(shape=(self._max_red, 2), fill_value=-1, dtype=np.float32)
         for i in range(nb_red):
             drawn_int = self.np_random.integers(0, len(available_space))
@@ -156,6 +177,7 @@ class NanoEnv(gym.Env):
         if options != None and "nb_white" in options:
             nb_white = max(0, options["nb_white"])
         nb_white = min(len(available_space), min(self._max_white, nb_white))
+        self._nb_white = nb_white
         self._white_cells = np.full(shape=(self._max_white, 2), fill_value=-1, dtype=np.float32)
         for i in range(nb_white):
             drawn_int = self.np_random.integers(0, len(available_space))
@@ -168,7 +190,24 @@ class NanoEnv(gym.Env):
 
         return observation, info
     
-    def step(self, action):
+    def _manage_wall_collision(self, old_location, new_location):
+        i = np.floor(old_location[0]); j = np.floor(old_location[1])
+        i_new = np.floor(new_location[0]); j_new = np.floor(new_location[1])
+
+        valid_position = i_new >= 0 and i_new < self._size and j_new >= 0 and j_new < self._size
+
+        if valid_position and self._vessel_topology[i_new][j_new] == 1:
+            if self._vessel_topology[i_new][j] != 1:
+                return np.array([new_location[0], old_location[1]], dtype=np.float32)
+            elif self._vessel_topology[i][j_new] != 1:
+                return np.array([old_location[0], new_location[1]], dtype=np.float32)
+            else:
+                return old_location
+        else:
+            return new_location
+    
+    
+    def step(self, action: list[float]):
         """Execute one timestep within the environment.
 
         Args:
@@ -180,7 +219,61 @@ class NanoEnv(gym.Env):
             tuple: (observation, reward, terminated, truncated, info)
         """
         
-        delta_v = action[0]
-        delta_theta = action[1]
+        delta_v = max(-0.02, min(action[0], 0.02)) # -0.02 <= delta_v <= 0.02
+        delta_theta = max(-0.2, min(action[1], 0.2)) # -0.2 <= delta_theta <= 0.2
+        wrap = lambda x : (x + np.pi) % (2 * np.pi) - np.pi
+
+        v_blood = np.array([0.2, 0.1], dtype=np.float32)
+
+        self._velocity = max(self._min_v, min(self._velocity + delta_v, self._max_v))
+        self._orientation = wrap(self._orientation + delta_theta)
+        v_agent = np.array([self._velocity * np.cos(self._orientation), self._velocity * np.sin(self._orientation)], dtype=np.float32)
+
+        # Compute new agent and cells positions with collisions management
+        new_agent_location = self._agent_location + (v_agent + v_blood) * self.__timestep
+        self._agent_location = self._manage_wall_collision(self._agent_location, new_agent_location)
+
+        for i in range(self._nb_red):
+            new_red_cell_position = self._red_cells[i] + v_blood * self.__timestep
+            self._red_cells[i] =  self._manage_wall_collision(self._red_cells[i], new_red_cell_position)
+        
+        for i in range(self._nb_white):
+            new_white_cell_position = self._white_cells[i] + v_blood * self.__timestep
+            self._white_cells[i] =  self._manage_wall_collision(self._white_cells[i], new_white_cell_position)
+
+        
+        # Update the timer  
+        self._time += self.__timestep
+
+        reward = 0
+
+        # Agent-cell collision
+        beta = self.np_random.uniform(0.5, 0.8)
+        epsilon = self.np_random.uniform(-0.1, 0.1)
+
+        for i in range(self._nb_red):
+            if np.linalg.norm(self._red_cells[i] - self._agent_location) < self.__agent_radius + self.__cell_radius:
+                self._velocity *= beta
+                self._orientation += epsilon
+                reward += self.__penalty_red_cell
+                break
+        
+        for i in range(self._nb_white):
+            if np.linalg.norm(self._white_cells[i] - self._agent_location) < self.__agent_radius + self.__cell_radius:
+                self._velocity *= beta + 0.1
+                self._orientation = wrap(self._orientation + epsilon)
+                reward += self.__penalty_white_cell
+                break
+
+        reward += -np.linalg.norm(self._agent_location - self._target_location)
+
+
+        terminated = np.linalg.norm(self._agent_location - self._target_location) <= self.__agent_radius + self.__target_radius
+        truncated = self._time > self.__timelimit
+
+        observation = self._get_obs()
+        info = self._get_info()
+
+        return observation, reward, terminated, truncated, info
     
 
