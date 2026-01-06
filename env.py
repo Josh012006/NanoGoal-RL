@@ -10,18 +10,18 @@ class NanoEnv(gym.Env):
 
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
 
-    def __init__(self, render_mode: str = None, size: int = 1000, min_v: float = 0.2, max_v: float = 3.0, max_red: int = 8, max_white: int = 4):
-        self._size = size # grid's size : preferably really large to allow a lot of modelisation to the environment
-        self._vessel_topology = np.zeros(shape=(size, size), dtype=int) # the vessels layout as a grid with 0 being the empty spaces and 1 being occupied ones by walls
-        self._window_size = 1024  # The size of the PyGame window
+    def __init__(self, render_mode: str = None, size: int = 125, min_v: float = 0.2, max_v: float = 3.0, max_red: int = 8, max_white: int = 4):
+        self._size = max(6, min(size, 125)) # grid's size : preferably really large to allow a lot of modelisation to the environment
+        self._vessel_topology = np.zeros(shape=(self._size, self._size), dtype=int) # the vessels layout as a grid with 0 being the empty spaces and 1 being occupied ones by walls
+        self._window_size = 1000  # The size of the PyGame window
         self.__pix_square_size = (
             self._window_size / self._size
         )  # The size of a single grid square in pixels
 
         # Entity characteristics
-        self.__agent_radius = 0.25
-        self.__cell_radius = 0.15
-        self.__target_radius = 0.4
+        self.__agent_radius = 0.5
+        self.__cell_radius = 0.4
+        self.__target_radius = 0.6
 
         # Penalty collision
         self.__penalty_red_cell = -0.2
@@ -58,13 +58,13 @@ class NanoEnv(gym.Env):
         # What the agent can observe
         self.observation_space = gym.spaces.Dict(
             {
-                "agent" : gym.spaces.Box(-1.0, float(size), shape=(2,), dtype=np.float32), # -1.0 and size will be used to reprensent element outside of the visible box
-                "target" : gym.spaces.Box(-1.0, float(size), shape=(2,), dtype=np.float32),
+                "agent" : gym.spaces.Box(-1.0, float(self._size), shape=(2,), dtype=np.float32), # -1.0 and size will be used to reprensent element outside of the visible box
+                "target" : gym.spaces.Box(-1.0, float(self._size), shape=(2,), dtype=np.float32),
                 "mvt" : gym.spaces.Box([min_v, -np.pi], [max_v, np.pi], shape=(2,), dtype=np.float32),
                 "obstacles": gym.spaces.Dict(
                     {
-                        "red" : gym.spaces.Box(-1.0, float(size), shape=(max_red, 2), dtype=np.float32),
-                        "white" : gym.spaces.Box(-1.0, float(size), shape=(max_white, 2), dtype=np.float32)
+                        "red" : gym.spaces.Box(-1.0, float(self._size), shape=(max_red, 2), dtype=np.float32),
+                        "white" : gym.spaces.Box(-1.0, float(self._size), shape=(max_white, 2), dtype=np.float32)
                     }
                 )
             }
@@ -83,10 +83,10 @@ class NanoEnv(gym.Env):
         self._clock = None
 
         # The agent's image
-        self._agent_img = pygame.image.load("agent.png").convert_alpha()
+        self._agent_img = pygame.image.load("assets/agent.png").convert_alpha()
         self._agent_img = pygame.transform.smoothscale(
             self._agent_img,
-            (int(0.8 * self.__pix_square_size), int(0.8 * self.__pix_square_size))
+            (int(2 * self.__agent_radius * self.__pix_square_size), int(2 * self.__agent_radius * self.__pix_square_size))
         )
 
 
@@ -129,13 +129,14 @@ class NanoEnv(gym.Env):
             matrix: a numpy array describing the generated topology
         """
         grid = np.zeros(shape=(self._size, self._size), dtype=int) # completely empty initially
+        base = int(seed) if seed is not None else 0
 
         treshold = self.np_random.uniform(0.1, 0.5) # treshold to decide if it is a wall or an empty space
         alpha = self.np_random.uniform(0.2, 0.6) # used so that the cells at the end of the grid are more empty
 
         for i in range(self._size):
             for j in range(self._size):
-                noise_num = pnoise2(j/100, i/100, base=seed, octaves=4, persistence=0.5, lacunarity=2.0) # generate perlin noise 
+                noise_num = pnoise2(j/100, i/100, base=base, octaves=4, persistence=0.5, lacunarity=2.0) # generate perlin noise 
                 if((noise_num + alpha * i/(self._size - 1)) < treshold): grid[i][j] = 1
 
         return grid
@@ -203,7 +204,7 @@ class NanoEnv(gym.Env):
         self._white_cells = np.full(shape=(self._max_white, 2), fill_value=-1, dtype=np.float32)
         for i in range(nb_white):
             drawn_int = self.np_random.integers(0, len(available_space))
-            self._red_cells[i] = list(available_space[drawn_int])
+            self._white_cells[i] = list(available_space[drawn_int])
             available_space.pop(drawn_int)
 
         
@@ -232,11 +233,11 @@ class NanoEnv(gym.Env):
             return new_location
     
     
-    def step(self, action: list[float]):
+    def step(self, action):
         """Execute one timestep within the environment.
 
         Args:
-            action: The action to take, namely a list in the format [float, float] where the first component is 
+            action: The action to take, namely an array in the format [float, float] where the first component is 
                 the component to add to the velocity and the second one is the component to add to
                 the orientation. Both can be negative.
 
@@ -260,7 +261,7 @@ class NanoEnv(gym.Env):
 
         for i in range(self._nb_red):
             new_red_cell_position = self._red_cells[i] + v_blood * self.__timestep
-            self._red_cells[i] =  self._manage_wall_collision(self._red_cells[i], new_red_cell_position)
+            self._red_cells[i] = self._manage_wall_collision(self._red_cells[i], new_red_cell_position)
         
         for i in range(self._nb_white):
             new_white_cell_position = self._white_cells[i] + v_blood * self.__timestep
@@ -292,9 +293,16 @@ class NanoEnv(gym.Env):
 
         reward += -np.linalg.norm(self._agent_location - self._target_location)
 
-        # TODO: Gérer aussi lorsqu'il sort de la fenêtre de visibilité
         terminated = np.linalg.norm(self._agent_location - self._target_location) <= self.__agent_radius + self.__target_radius
         truncated = self._time > self.__timelimit
+
+
+        # Prevent the agent from letting the fluid transport it outside the blood vessel
+        if self._agent_location[0] < 0 or self._agent_location[1] < 0 or self._agent_location[0] >= self._size or self._agent_location[1] >= self._size:
+            reward += -50
+            truncated = True
+            terminated = True
+        
 
         observation = self._get_obs()
         info = self._get_info()
@@ -308,10 +316,6 @@ class NanoEnv(gym.Env):
     def render(self):
         if self.render_mode == "rgb_array":
             return self._render_frame()
-        
-
-    def _pygame_coordinate(self, grid_coordinates):
-        return np.array([np.floor(grid_coordinates[1]), np.floor(grid_coordinates[0])], dtype=np.float32)
 
 
     def _render_frame(self):
@@ -327,14 +331,14 @@ class NanoEnv(gym.Env):
         canvas = pygame.Surface((self._window_size, self._window_size))
         canvas.fill((255, 255, 255))
 
-        # Draw the environment (the blood vessels with the walls)
+        # Draw the environment first (the blood vessels with the walls)
         for i in range(self._size):
             for j in range(self._size):
                 pygame.draw.rect(
                     canvas,
                     (255, 192, 203) if self._vessel_topology[i][j] == 0 else (101, 67, 33),
                     pygame.Rect(
-                        self.__pix_square_size * self._pygame_coordinate([i, j]),
+                        (self.__pix_square_size * np.array([j, i])).astype(int),
                         (self.__pix_square_size, self.__pix_square_size),
                     ),
                 )
@@ -344,17 +348,33 @@ class NanoEnv(gym.Env):
         pygame.draw.circle(
             canvas,
             (255, 255, 153),
-            (self._pygame_coordinate(self._target_location) + 0.5) * self.__pix_square_size,
-            self.__pix_square_size / 3,
+            (self._target_location[::-1] + 0.5) * self.__pix_square_size,
+            int(self.__target_radius * self.__pix_square_size)
         )
         # Now we draw the agent with the appropriate orientation
         angle_deg = -np.degrees(self._orientation)
         rotated_img = pygame.transform.rotate(self._agent_img, angle_deg)
-        center = (self._pygame_coordinate(self._agent_location) + 0.5) * self.__pix_square_size
+        center = (self._agent_location[::-1] + 0.5) * self.__pix_square_size
         rect = rotated_img.get_rect(center=center)
         canvas.blit(rotated_img, rect)
 
-        # TODO: Manage red and white blood cells rendering
+        # Red and white blood cells rendering
+        for red_cell in self._red_cells:
+            pygame.draw.circle(
+                canvas,
+                (255, 0, 0),
+                (red_cell[::-1] + 0.5) * self.__pix_square_size,
+                int(self.__cell_radius * self.__pix_square_size)
+            )
+
+        for white_cell in self._white_cells:
+            pygame.draw.circle(
+                canvas,
+                (255, 255, 255),
+                (white_cell[::-1] + 0.5) * self.__pix_square_size,
+                int(self.__cell_radius * self.__pix_square_size)
+            )
+
 
         if self.render_mode == "human":
             # The following line copies our drawings from `canvas` to the visible window
