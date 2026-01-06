@@ -1,15 +1,22 @@
+from typing import Optional
 import gymnasium as gym
 import numpy as np
-from typing import Optional
+import pygame
 from noise import pnoise2
 from utils import main_related_component
 
 
 class NanoEnv(gym.Env):
 
-    def __init__(self, size: int = 1000, min_v: float = 0.2, max_v: float = 3.0, max_red: int = 8, max_white: int = 4):
+    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
+
+    def __init__(self, render_mode: str = None, size: int = 1000, min_v: float = 0.2, max_v: float = 3.0, max_red: int = 8, max_white: int = 4):
         self._size = size # grid's size : preferably really large to allow a lot of modelisation to the environment
         self._vessel_topology = np.zeros(shape=(size, size), dtype=int) # the vessels layout as a grid with 0 being the empty spaces and 1 being occupied ones by walls
+        self._window_size = 1024  # The size of the PyGame window
+        self.__pix_square_size = (
+            self._window_size / self._size
+        )  # The size of a single grid square in pixels
 
         # Entity characteristics
         self.__agent_radius = 0.25
@@ -66,6 +73,21 @@ class NanoEnv(gym.Env):
 
         # The actions available to the agent
         self.action_space = gym.spaces.Box([min_v, -np.pi], [max_v, np.pi], shape=(2,), dtype=np.float32)
+
+        # Set the rendering mode
+        assert render_mode is None or render_mode in self.metadata["render_modes"]
+        self.render_mode = render_mode
+
+        # The window and the clock we will use for rendering
+        self._window = None 
+        self._clock = None
+
+        # The agent's image
+        self._agent_img = pygame.image.load("agent.png").convert_alpha()
+        self._agent_img = pygame.transform.smoothscale(
+            self._agent_img,
+            (int(0.8 * self.__pix_square_size), int(0.8 * self.__pix_square_size))
+        )
 
 
     
@@ -188,6 +210,9 @@ class NanoEnv(gym.Env):
         observation = self._get_obs()
         info = self._get_info()
 
+        if self.render_mode == "human":
+            self._render_frame()
+
         return observation, info
     
     def _manage_wall_collision(self, old_location, new_location):
@@ -267,13 +292,89 @@ class NanoEnv(gym.Env):
 
         reward += -np.linalg.norm(self._agent_location - self._target_location)
 
-
+        # TODO: Gérer aussi lorsqu'il sort de la fenêtre de visibilité
         terminated = np.linalg.norm(self._agent_location - self._target_location) <= self.__agent_radius + self.__target_radius
         truncated = self._time > self.__timelimit
 
         observation = self._get_obs()
         info = self._get_info()
 
+        if self.render_mode == "human":
+            self._render_frame()
+
         return observation, reward, terminated, truncated, info
+    
+
+    def render(self):
+        if self.render_mode == "rgb_array":
+            return self._render_frame()
+        
+
+    def _pygame_coordinate(self, grid_coordinates):
+        return np.array([np.floor(grid_coordinates[1]), np.floor(grid_coordinates[0])], dtype=np.float32)
+
+
+    def _render_frame(self):
+        if self._window is None and self.render_mode == "human":
+            pygame.init()
+            pygame.display.init()
+            self._window = pygame.display.set_mode(
+                (self._window_size, self._window_size)
+            )
+        if self._clock is None and self.render_mode == "human":
+            self._clock = pygame.time.Clock()
+
+        canvas = pygame.Surface((self._window_size, self._window_size))
+        canvas.fill((255, 255, 255))
+
+        # Draw the environment (the blood vessels with the walls)
+        for i in range(self._size):
+            for j in range(self._size):
+                pygame.draw.rect(
+                    canvas,
+                    (255, 192, 203) if self._vessel_topology[i][j] == 0 else (101, 67, 33),
+                    pygame.Rect(
+                        self.__pix_square_size * self._pygame_coordinate([i, j]),
+                        (self.__pix_square_size, self.__pix_square_size),
+                    ),
+                )
+
+        # First we draw the target
+        # Convert [row, col] to pygame (x, y) by reversing the coordinates
+        pygame.draw.circle(
+            canvas,
+            (255, 255, 153),
+            (self._pygame_coordinate(self._target_location) + 0.5) * self.__pix_square_size,
+            self.__pix_square_size / 3,
+        )
+        # Now we draw the agent with the appropriate orientation
+        angle_deg = -np.degrees(self._orientation)
+        rotated_img = pygame.transform.rotate(self._agent_img, angle_deg)
+        center = (self._pygame_coordinate(self._agent_location) + 0.5) * self.__pix_square_size
+        rect = rotated_img.get_rect(center=center)
+        canvas.blit(rotated_img, rect)
+
+        # TODO: Manage red and white blood cells rendering
+
+        if self.render_mode == "human":
+            # The following line copies our drawings from `canvas` to the visible window
+            self._window.blit(canvas, canvas.get_rect())
+            pygame.event.pump()
+            pygame.display.update()
+
+            # We need to ensure that human-rendering occurs at the predefined framerate.
+            # The following line will automatically add a delay to keep the framerate stable.
+            self._clock.tick(self.metadata["render_fps"])
+        else:  # rgb_array
+            return np.transpose(
+                np.array(pygame.surfarray.pixels3d(canvas)), axes=(1, 0, 2)
+            )
+        
+    
+    def close(self):
+        if self._window is not None:
+            pygame.display.quit()
+            pygame.quit()
+
     
 
