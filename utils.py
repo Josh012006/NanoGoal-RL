@@ -15,7 +15,7 @@ def main_related_component(grid, height, width):
         height: the height of the grid
         width: the width of the grid
     Returns:
-        list[tuple[int, int]]: the positions in the main related component
+        list: the positions in the main related component
     """
 
     result = []

@@ -5,7 +5,7 @@ import gymnasium as gym
 myEnv = gym.make("Nano-v0", render_mode="human")
 
 # Reset environment to start a new episode
-observation, info = myEnv.reset()
+observation, info = myEnv.reset(seed=20)
 
 print(f"Starting observation: {observation}")
 

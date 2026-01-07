@@ -172,17 +172,16 @@ class NanoEnv(gym.Env):
         # Seed the random number generator
         super().reset(seed=seed)
 
+
         # Generate a pseudo-random but also valid vessel topology for the episode
         self._vessel_topology = self._generate_logical_topology(seed)
 
         available_space = main_related_component(self._vessel_topology, self._size, self._size)
         new_seed = 1 + 0 if seed == None else seed
-        while len(available_space) < 0: # making sure there is at least a related component in the generated environment
+        while len(available_space) <= 100: # making sure there is at least a related component in the generated environment
             self._vessel_topology = self._generate_logical_topology(new_seed)
             available_space = main_related_component(self._vessel_topology, self._size, self._size)
             new_seed += 1
-
-        print(len(available_space))
 
         # Randomly generated target and agent locations in regard to the topology 
         agent_int = self.np_random.integers(0, len(available_space))
@@ -199,7 +198,7 @@ class NanoEnv(gym.Env):
 
         # Set the time limit 
         d0 = np.linalg.norm(self._agent_location - self._target_location)
-        self.__timelimit = min(3 + 2 * d0, 30)
+        self.__timelimit = min(3 + 2 * d0, 22)
 
         # Random red and white cells locations in regard to the topology and the options nb_red and nb_white
         nb_red = self.np_random.integers(0, self._max_red)
@@ -232,6 +231,7 @@ class NanoEnv(gym.Env):
             self._render_frame()
 
         return observation, info
+    
     
     def _manage_wall_collision(self, old_location, new_location):
         i = int(np.floor(old_location[0]))
