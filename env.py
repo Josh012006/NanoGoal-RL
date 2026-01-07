@@ -11,76 +11,90 @@ class NanoEnv(gym.Env):
 
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
 
-    def __init__(self, render_mode: str = None, size: int = 125, min_v: float = 1.0, max_v: float = 8.0, max_red: int = 8, max_white: int = 4):
-        self._size = max(100, min(size, 125)) # grid's size : preferably really large to allow a lot of modelisation to the environment
+    def __init__(self, render_mode: str = None, min_v: float = 1.0, max_v: float = 6.0, max_red: int = 8, max_white: int = 4):
+
+        # Discrete representation as a grid
+        self._size = 125  # grid's size
         self._vessel_topology = np.zeros(shape=(self._size, self._size), dtype=int) # the vessels layout as a grid with 0 being the empty spaces and 1 being occupied ones by walls
-        self._window_size = 600  # The size of the PyGame window
-        self.__pix_square_size = (
-            self._window_size / self._size
-        )  # The size of a single grid square in pixels
 
-        # Entity characteristics
-        self.__agent_radius = 6.0
-        self.__cell_radius = 0.8
-        self.__target_radius = 1.3
+        # Entities characteristics
+        self.__agent_radius = 8.0
+        self.__cell_radius = 1.0
+        self.__target_radius = 2.0
 
-        # Penalty collision
-        self.__penalty_red_cell = -0.2
-        self.__penalty_white_cell = -1.0
-
-        # Time management
-        self._time = 0
-        self.__timestep = 0.05 # the duration of one step in seconds
-        self.__timelimit = 0
+        # The number of red and white cells in the simulation. An exact number will be chosen randomly
+        self._nb_red = 0
+        self._nb_white = 0
+        self._max_red = max(0, min(max_red, 20))
+        self._max_white = max(0, min(max_white, 20))
 
         # The minimum and maximum velocity. They are useful to define real-life constraint on the agent
         self._min_v = min_v
         self._max_v = max_v
 
-        # The number of red and white cells in the simulation. An exact number will be chosen randomly
-        self._nb_red = 0
-        self._nb_white = 0
-        self._max_red = max_red
-        self._max_white = max_white
-
         # Agent and target initial locations
         self._agent_location = np.array([-1, -1], dtype=np.float32)
         self._target_location = np.array([-1, -1], dtype=np.float32)
-
-        # Initial velocity and orientation
-        self._velocity = 0.0
-        self._orientation = 0.0
 
         # Blood and white cells initial locations
         self._red_cells = np.full(shape=(max_red, 2), fill_value=-1, dtype=np.float32)
         self._white_cells = np.full(shape=(max_white, 2), fill_value=-1, dtype=np.float32)
 
+        # Initial agent's velocity and orientation
+        self._velocity = 0.0
+        self._orientation = 0.0
+
+        # Penalty collision
+        self.__penalty_red_cell = -3.0
+        self.__penalty_white_cell = -7.0
+
+        # Time management
+        self._time = 0
+        self.__timestep = 0.05
+        self.__timelimit = 0
+
+        # The rendering parameters
+        assert render_mode is None or render_mode in self.metadata["render_modes"] # set the rendering mode
+        self.render_mode = render_mode
+
+        self._window_size = 625  # The size of the PyGame window
+        self.__pix_square_size = (
+            self._window_size / self._size
+        )  # The size of a single grid square in pixels
+
+        # The window and the clock we will use for rendering
+        self._window = None 
+        self._clock = None
+
 
         # What the agent can observe
         self.observation_space = gym.spaces.Dict(
             {
-                "agent" : gym.spaces.Box(-1.0, float(self._size), shape=(2,), dtype=np.float32), # -1.0 and size will be used to reprensent element outside of the visible box
+                # -1.0 and size will be used to reprensent element outside of the visible box
+                "agent" : gym.spaces.Box(-1.0, float(self._size), shape=(2,), dtype=np.float32),
                 "target" : gym.spaces.Box(-1.0, float(self._size), shape=(2,), dtype=np.float32),
-                "mvt" : gym.spaces.Box(np.array([min_v, -np.pi], dtype=np.float32), np.array([max_v, np.pi], dtype=np.float32), shape=(2,), dtype=np.float32),
+                "mvt" : gym.spaces.Box(
+                    low=np.array([min_v, -np.pi], dtype=np.float32), 
+                    high=np.array([max_v, np.pi], dtype=np.float32), 
+                    shape=(2,), 
+                    dtype=np.float32
+                ),
                 "obstacles": gym.spaces.Dict(
                     {
-                        "red" : gym.spaces.Box(-1.0, float(self._size), shape=(max_red, 2), dtype=np.float32),
-                        "white" : gym.spaces.Box(-1.0, float(self._size), shape=(max_white, 2), dtype=np.float32)
+                        "red" : gym.spaces.Box(-1.0, float(self._size), shape=(self._max_red, 2), dtype=np.float32),
+                        "white" : gym.spaces.Box(-1.0, float(self._size), shape=(self._max_white, 2), dtype=np.float32)
                     }
                 )
             }
         )
 
         # The actions available to the agent
-        self.action_space = gym.spaces.Box(np.array([min_v, -np.pi], dtype=np.float32), np.array([max_v, np.pi], dtype=np.float32), shape=(2,), dtype=np.float32)
-
-        # Set the rendering mode
-        assert render_mode is None or render_mode in self.metadata["render_modes"]
-        self.render_mode = render_mode
-
-        # The window and the clock we will use for rendering
-        self._window = None 
-        self._clock = None
+        self.action_space = gym.spaces.Box(
+            low=np.array([min_v, -np.pi], dtype=np.float32), 
+            high=np.array([max_v, np.pi], dtype=np.float32), 
+            shape=(2,), 
+            dtype=np.float32
+        )
 
 
     
@@ -128,10 +142,11 @@ class NanoEnv(gym.Env):
 
         for i in range(self._size):
             for j in range(self._size):
-                n = pnoise2(j/20, i/20, base=base, octaves=6, persistence=0.5, lacunarity=2.0)
+                n = pnoise2(j/100, i/100, base=base, octaves=6, persistence=0.5, lacunarity=2.0)
                 if(n < treshold): grid[i][j] = 1
 
         return grid
+
     
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
         """Start a new episode.
@@ -154,10 +169,12 @@ class NanoEnv(gym.Env):
 
         available_space = main_related_component(self._vessel_topology, self._size, self._size)
         new_seed = 1 + 0 if seed == None else seed
-        while available_space == []: # making sure there is at least a related component in the generated environment
+        while len(available_space) < 500: # making sure there is at least a related component in the generated environment
             self._vessel_topology = self._generate_logical_topology(new_seed)
             available_space = main_related_component(self._vessel_topology, self._size, self._size)
             new_seed += 1
+
+        print(len(available_space))
 
         # Randomly generated target and agent locations in regard to the topology 
         agent_int = self.np_random.integers(0, len(available_space))
