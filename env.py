@@ -135,15 +135,23 @@ class NanoEnv(gym.Env):
         Returns:
             matrix: a numpy array describing the generated topology
         """
-        grid = np.zeros(shape=(self._size, self._size), dtype=int) # completely empty initially
-        base = int(seed) if seed is not None else 0
+        computed = np.zeros(shape=(self._size, self._size))
+        base = int(seed) if seed is not None else self.np_random.integers(25, 10000)
 
-        treshold = self.np_random.uniform(0.1, 0.5) # treshold to decide if it is a wall or an empty space
+        # Add more variety
+        gamma = self.np_random.uniform(1.4, 2.5)
+        ox, oy = self.np_random.uniform(0, 10000, size=2)
 
         for i in range(self._size):
             for j in range(self._size):
-                n = pnoise2(j/100, i/100, base=base, octaves=6, persistence=0.5, lacunarity=2.0)
-                if(n < treshold): grid[i][j] = 1
+                n1 = pnoise2((j + ox)/173, (i + oy)/173, base=base, octaves=4, persistence=0.5, lacunarity=2.0)
+                n2 = pnoise2((j + ox)/57, (i + oy)/57, base=(base + 1337), octaves=6, persistence=0.5, lacunarity=2.0)
+                micro = 0.05 * pnoise2((j + ox) / 23, (i + oy) / 23, base=base + 999)
+                n = (((0.75 * n1 + 0.25 * n2) + 1) / 2 + micro) ** gamma
+                computed[i][j] = np.clip(n, 0.0, 1.0)
+
+        t = np.quantile(computed, 0.3)
+        grid = (computed <= t).astype(int)
 
         return grid
 
@@ -169,7 +177,7 @@ class NanoEnv(gym.Env):
 
         available_space = main_related_component(self._vessel_topology, self._size, self._size)
         new_seed = 1 + 0 if seed == None else seed
-        while len(available_space) < 500: # making sure there is at least a related component in the generated environment
+        while len(available_space) < 0: # making sure there is at least a related component in the generated environment
             self._vessel_topology = self._generate_logical_topology(new_seed)
             available_space = main_related_component(self._vessel_topology, self._size, self._size)
             new_seed += 1
