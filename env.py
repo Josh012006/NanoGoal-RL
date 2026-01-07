@@ -28,9 +28,12 @@ class NanoEnv(gym.Env):
         self._max_red = max(0, min(max_red, 20))
         self._max_white = max(0, min(max_white, 20))
 
-        # The minimum and maximum velocity. They are useful to define real-life constraint on the agent
+        # The minimum and maximum velocity of the agent. They are useful to define real-life constraint on the agent
         self._min_v = min_v
         self._max_v = max_v
+
+        # The blood's velocity
+        self.__v_blood = np.array([1.4, 1.0], dtype=np.float32)
 
         # Agent and target initial locations
         self._agent_location = np.array([-1, -1], dtype=np.float32)
@@ -198,7 +201,7 @@ class NanoEnv(gym.Env):
 
         # Set the time limit 
         d0 = np.linalg.norm(self._agent_location - self._target_location)
-        self.__timelimit = min(3 + 2 * d0, 22)
+        self.__timelimit = min(3 + 2 * d0, 32)
 
         # Random red and white cells locations in regard to the topology and the options nb_red and nb_white
         nb_red = self.np_random.integers(0, self._max_red)
@@ -232,35 +235,56 @@ class NanoEnv(gym.Env):
 
         return observation, info
     
-    
-    def _manage_wall_collision(self, old_location, new_location):
-        i = int(np.floor(old_location[0]))
-        j = int(np.floor(old_location[1]))
-        i_new = int(np.floor(new_location[0]))
-        j_new = int(np.floor(new_location[1]))
 
-        old_valid = (
-            0 <= i < self._size and
-            0 <= j < self._size
-        )
+    def _manage_wall_collision(self, old_location, new_location, radius):
+        """Logic to verify wall collision with a cell or the agent. Was refactored using AI (CHATGPT).
+        Args:
+            old_location: the previous location of the entity
+            new_location: the location it wants to attain after the step
+            radius: the entity's radius 
+        """
+        x0, y0 = old_location[0], old_location[1]
+        x1, y1 = new_location[0], new_location[1]
+        r = radius
 
-        new_valid = (
-            0 <= i_new < self._size and
-            0 <= j_new < self._size
-        )
+        def touche_mur(x, y) -> bool:
+            # Grid's cells potentially touched by the entity
+            i0 = int(np.floor(x - r))
+            i1 = int(np.floor(x + r))
+            j0 = int(np.floor(y - r))
+            j1 = int(np.floor(y + r))
 
-        if not old_valid:
-            return old_location
-        if not new_valid:
-            return old_location
-        if self._vessel_topology[i_new, j_new] == 1:
-            if self._vessel_topology[i_new, j] != 1:
-                return np.array([new_location[0], old_location[1]], dtype=np.float32)
-            if self._vessel_topology[i, j_new] != 1:
-                return np.array([old_location[0], new_location[1]], dtype=np.float32)
-            return old_location
+            # We let the element disappear if it goes out of the grid
+            if i0 < 0 or j0 < 0 or i1 >= self._size or j1 >= self._size:
+                return False
 
-        return new_location
+            # Check collision for each cell in the bounding box
+            for i in range(i0, i1 + 1):
+                for j in range(j0, j1 + 1):
+                    if self._vessel_topology[i, j] != 1:
+                        continue
+
+                    cx = min(max(x, i), i + 1.0)  # clamp sur le carré
+                    cy = min(max(y, j), j + 1.0)
+                    dx = x - cx
+                    dy = y - cy
+                    if dx * dx + dy * dy < r * r:
+                        return True
+            return False
+
+        # If no collision, just move
+        if not touche_mur(x1, y1):
+            return np.array([x1, y1], dtype=np.float32)
+
+        # If there is a collision see if the entity can slide along the wall
+        if not touche_mur(x1, y0):
+            return np.array([x1, y0], dtype=np.float32)
+
+        if not touche_mur(x0, y1):
+            return np.array([x0, y1], dtype=np.float32)
+
+        # If the entity is completely blocked, don't move
+        return np.array([x0, y0], dtype=np.float32)
     
     
     def step(self, action):
@@ -274,34 +298,34 @@ class NanoEnv(gym.Env):
         Returns:
             tuple: (observation, reward, terminated, truncated, info)
         """
-        
-        delta_v = max(-0.1, min(action[0], 2.0)) # -0.02 <= delta_v <= 0.02
-        delta_theta = max(-0.2, min(action[1], 0.2)) # -0.2 <= delta_theta <= 0.2
-        wrap = lambda x : (x + np.pi) % (2 * np.pi) - np.pi
 
-        v_blood = np.array([0.4, 0.2], dtype=np.float32)
+        reward = 0
+        terminated = False
+        truncated = False
+
+        wrap = lambda x : (x + np.pi) % (2 * np.pi) - np.pi # helper function
+        
+        # Updating the agent's new velocity and orientation
+        delta_v = max(-2.0, min(action[0], 2.0)) # -2.0 <= delta_v <= 2.0
+        delta_theta = max(-0.2, min(action[1], 0.2)) # -0.2 <= delta_theta <= 0.2
 
         self._velocity = max(self._min_v, min(self._velocity + delta_v, self._max_v))
         self._orientation = wrap(self._orientation + delta_theta)
-        v_agent = np.array([self._velocity * np.cos(self._orientation), self._velocity * np.sin(self._orientation)], dtype=np.float32)
 
-        # Compute new agent and cells positions with collisions management
-        new_agent_location = self._agent_location + (v_agent + v_blood) * self.__timestep
-        self._agent_location = self._manage_wall_collision(self._agent_location, new_agent_location)
+
+        # Compute new agent and cells continuous positions with collisions management
+        v_agent = np.array([self._velocity * np.cos(self._orientation), self._velocity * np.sin(self._orientation)], dtype=np.float32)
+        new_agent_location = self._agent_location + (v_agent + 0.5 * self.__v_blood) * self.__timestep
+        self._agent_location = self._manage_wall_collision(self._agent_location, new_agent_location, self.__agent_radius)
 
         for i in range(self._nb_red):
-            new_red_cell_position = self._red_cells[i] + 2 * v_blood * self.__timestep
-            self._red_cells[i] = self._manage_wall_collision(self._red_cells[i], new_red_cell_position)
+            new_red_cell_position = self._red_cells[i] + self.__v_blood * self.__timestep
+            self._red_cells[i] = self._manage_wall_collision(self._red_cells[i], new_red_cell_position, self.__cell_radius)
         
         for i in range(self._nb_white):
-            new_white_cell_position = self._white_cells[i] + 2 * v_blood * self.__timestep
-            self._white_cells[i] =  self._manage_wall_collision(self._white_cells[i], new_white_cell_position)
+            new_white_cell_position = self._white_cells[i] + self.__v_blood * self.__timestep
+            self._white_cells[i] =  self._manage_wall_collision(self._white_cells[i], new_white_cell_position, self.__cell_radius)
 
-        
-        # Update the timer  
-        self._time += self.__timestep
-
-        reward = 0
 
         # Agent-cell collision
         beta = self.np_random.uniform(0.5, 0.8)
@@ -332,6 +356,10 @@ class NanoEnv(gym.Env):
             reward += -50
             truncated = True
             terminated = True
+
+        
+        # Update the timer  
+        self._time += self.__timestep
         
 
         observation = self._get_obs()
