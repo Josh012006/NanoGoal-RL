@@ -88,6 +88,7 @@ python vizualize.py
 - Give more life to the red and white cells. For example, touching a white cell decreases the agent's velocity
 - Be more strict on the goal achievement. For example, instead of just trying to attain the target, try to have a low velocity at arrival and a certain orientation
 - Extend to 3D control
+- Compare with other RL algorithms like HER or DDPG
 - Sim-to-real transfer experiments
 - Multi-agent goal conditioned control
 

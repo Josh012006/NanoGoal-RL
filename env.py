@@ -9,9 +9,9 @@ from gymnasium.envs.registration import register
 
 class NanoEnv(gym.Env):
 
-    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
+    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 30}
 
-    def __init__(self, render_mode: str = None, min_v: float = 1.0, max_v: float = 6.0, max_red: int = 8, max_white: int = 4):
+    def __init__(self, render_mode: str = None, max_v: float = 6.0, max_red: int = 8, max_white: int = 4):
 
         # Discrete representation as a grid
         self._size = 125  # grid's size
@@ -28,8 +28,7 @@ class NanoEnv(gym.Env):
         self._max_red = max(0, min(max_red, 20))
         self._max_white = max(0, min(max_white, 20))
 
-        # The minimum and maximum velocity of the agent. They are useful to define real-life constraint on the agent
-        self._min_v = min_v
+        # The maximum velocity of the agent. They are useful to define real-life constraint on the agent
         self._max_v = max_v
 
         # The blood's velocity
@@ -78,24 +77,20 @@ class NanoEnv(gym.Env):
                 "agent" : gym.spaces.Box(-1.0, float(self._size), shape=(2,), dtype=np.float32),
                 "target" : gym.spaces.Box(-1.0, float(self._size), shape=(2,), dtype=np.float32),
                 "mvt" : gym.spaces.Box(
-                    low=np.array([min_v, -np.pi], dtype=np.float32), 
-                    high=np.array([max_v, np.pi], dtype=np.float32), 
+                    low=np.array([0.0, -np.pi], dtype=np.float32), 
+                    high=np.array([self._max_v, np.pi], dtype=np.float32), 
                     shape=(2,), 
                     dtype=np.float32
                 ),
-                "obstacles": gym.spaces.Dict(
-                    {
-                        "red" : gym.spaces.Box(-1.0, float(self._size), shape=(self._max_red, 2), dtype=np.float32),
-                        "white" : gym.spaces.Box(-1.0, float(self._size), shape=(self._max_white, 2), dtype=np.float32)
-                    }
-                )
+                "red" : gym.spaces.Box(-1.0, float(self._size), shape=(self._max_red, 2), dtype=np.float32),
+                "white" : gym.spaces.Box(-1.0, float(self._size), shape=(self._max_white, 2), dtype=np.float32)
             }
         )
 
         # The actions available to the agent
         self.action_space = gym.spaces.Box(
-            low=np.array([min_v, -np.pi], dtype=np.float32), 
-            high=np.array([max_v, np.pi], dtype=np.float32), 
+            low=np.array([-self._max_v, -np.pi], dtype=np.float32), 
+            high=np.array([self._max_v, np.pi], dtype=np.float32), 
             shape=(2,), 
             dtype=np.float32
         )
@@ -113,10 +108,8 @@ class NanoEnv(gym.Env):
             "agent" : self._agent_location,
             "target" : self._target_location,
             "mvt" : np.array([self._velocity, self._orientation], dtype=np.float32),
-            "obstacles": {
-                "red" : self._red_cells,
-                "white" : self._white_cells
-            }
+            "red" : self._red_cells,
+            "white" : self._white_cells
         }
     
     def _get_info(self):
@@ -311,7 +304,7 @@ class NanoEnv(gym.Env):
         delta_v = max(-2.0, min(action[0], 2.0)) # -2.0 <= delta_v <= 2.0
         delta_theta = max(-0.2, min(action[1], 0.2)) # -0.2 <= delta_theta <= 0.2
 
-        self._velocity = max(self._min_v, min(self._velocity + delta_v, self._max_v))
+        self._velocity = max(0.0, min(self._velocity + delta_v, self._max_v))
         self._orientation = wrap(self._orientation + delta_theta)
 
 
