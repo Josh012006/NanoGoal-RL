@@ -1,20 +1,25 @@
+import env
+import numpy as np
 import gymnasium as gym
 
-# Initialise the environment
-env = gym.make("LunarLander-v3", render_mode="human")
+myEnv = gym.make("Nano-v0", render_mode="human")
 
-# Reset the environment to generate the first observation
-observation, info = env.reset(seed=42)
-for _ in range(1000):
-    # this is where you would insert your policy
-    action = env.action_space.sample()
+# Reset environment to start a new episode
+observation, info = myEnv.reset()
 
-    # step (transition) through the environment with the action
-    # receiving the next observation, reward and if the episode has terminated or truncated
-    observation, reward, terminated, truncated, info = env.step(action)
+print(f"Starting observation: {observation}")
 
-    # If the episode has ended then we can reset to start a new episode
-    if terminated or truncated:
-        observation, info = env.reset()
+episode_over = False
+total_reward = 0
 
-env.close()
+while not episode_over:
+    action = np.array([np.random.uniform(2.0, 6.0), np.random.uniform(-np.pi, np.pi)], dtype=np.float32)  # Random action for now - real agents will be smarter!
+
+    # Take the action and see what happens
+    observation, reward, terminated, truncated, info = myEnv.step(action)
+
+    total_reward += reward
+    episode_over = terminated or truncated
+
+print(f"Episode finished! Total reward: {total_reward}")
+myEnv.close()

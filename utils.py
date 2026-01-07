@@ -43,13 +43,13 @@ def main_related_component(grid, height, width):
 
     return result
 
-grid = [
-    [1, 1, 1, 1, 1, 1],
-    [1, 0, 0, 1, 0, 1],
-    [1, 0, 0, 1, 0, 1],
-    [1, 1, 1, 1, 0, 1],
-    [1, 0, 0, 0, 0, 1],
-    [1, 1, 1, 1, 1, 1],
-]
+# grid = [
+#     [1, 1, 1, 1, 1, 1],
+#     [1, 0, 0, 1, 0, 1],
+#     [1, 0, 0, 1, 0, 1],
+#     [1, 1, 1, 1, 0, 1],
+#     [1, 0, 0, 0, 0, 1],
+#     [1, 1, 1, 1, 1, 1],
+# ]
 
-print(main_related_component(grid, 6, 6))
+# print(main_related_component(grid, 6, 6))
