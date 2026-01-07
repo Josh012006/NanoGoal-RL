@@ -18,8 +18,8 @@ class NanoEnv(gym.Env):
         self._vessel_topology = np.zeros(shape=(self._size, self._size), dtype=int) # the vessels layout as a grid with 0 being the empty spaces and 1 being occupied ones by walls
 
         # Entities characteristics
-        self.__agent_radius = 8.0
-        self.__cell_radius = 1.0
+        self.__agent_radius = 1.2
+        self.__cell_radius = 0.8
         self.__target_radius = 2.0
 
         # The number of red and white cells in the simulation. An exact number will be chosen randomly
@@ -38,6 +38,7 @@ class NanoEnv(gym.Env):
         # Agent and target initial locations
         self._agent_location = np.array([-1, -1], dtype=np.float32)
         self._target_location = np.array([-1, -1], dtype=np.float32)
+        self.__initial_distance = 0
 
         # Blood and white cells initial locations
         self._red_cells = np.full(shape=(max_red, 2), fill_value=-1, dtype=np.float32)
@@ -201,6 +202,7 @@ class NanoEnv(gym.Env):
 
         # Set the time limit 
         d0 = np.linalg.norm(self._agent_location - self._target_location)
+        self.__initial_distance = d0
         self.__timelimit = min(3 + 2 * d0, 32)
 
         # Random red and white cells locations in regard to the topology and the options nb_red and nb_white
@@ -237,7 +239,7 @@ class NanoEnv(gym.Env):
     
 
     def _manage_wall_collision(self, old_location, new_location, radius):
-        """Logic to verify wall collision with a cell or the agent. Was refactored using AI (CHATGPT).
+        """Logic to verify wall collision with a cell or the agent. Was refactored with the help of AI (CHATGPT).
         Args:
             old_location: the previous location of the entity
             new_location: the location it wants to attain after the step
@@ -333,21 +335,23 @@ class NanoEnv(gym.Env):
 
         for i in range(self._nb_red):
             if np.linalg.norm(self._red_cells[i] - self._agent_location) < self.__agent_radius + self.__cell_radius:
-                self._velocity *= beta
+                self._velocity -= beta
                 self._orientation += epsilon
                 reward += self.__penalty_red_cell
                 break
         
         for i in range(self._nb_white):
             if np.linalg.norm(self._white_cells[i] - self._agent_location) < self.__agent_radius + self.__cell_radius:
-                self._velocity *= beta + 0.1
+                self._velocity -= beta + 0.1
                 self._orientation = wrap(self._orientation + epsilon)
                 reward += self.__penalty_white_cell
                 break
 
-        reward += -np.linalg.norm(self._agent_location - self._target_location)
+        reward += -np.linalg.norm(self._agent_location - self._target_location) / self.__initial_distance
 
-        terminated = np.linalg.norm(self._agent_location - self._target_location) <= self.__agent_radius + self.__target_radius
+        if np.linalg.norm(self._agent_location - self._target_location) <= self.__agent_radius + self.__target_radius:
+            terminated = True
+            reward += 100
         truncated = self._time > self.__timelimit
 
 
@@ -383,11 +387,13 @@ class NanoEnv(gym.Env):
             self._window = pygame.display.set_mode(
                 (self._window_size, self._window_size)
             )
+            
             self._agent_img = pygame.image.load("assets/agent.png").convert_alpha()
-            self._agent_img = pygame.transform.smoothscale(
-                self._agent_img,
-                (int(2 * self.__agent_radius * self.__pix_square_size), int(2 * self.__agent_radius * self.__pix_square_size))
-            )
+            rect = self._agent_img.get_bounding_rect(min_alpha=10)
+            self._agent_img = self._agent_img.subsurface(rect).copy()
+            d_px = int(round(2 * self.__agent_radius * self.__pix_square_size))
+            d_px = max(2, d_px)
+            self._agent_img = pygame.transform.smoothscale(self._agent_img, (d_px, d_px))
         
         if self._clock is None and self.render_mode == "human":
             self._clock = pygame.time.Clock()
@@ -414,13 +420,13 @@ class NanoEnv(gym.Env):
             canvas,
             (255, 255, 153),
             tuple(((self._target_location[::-1] + 0.5) * self.__pix_square_size).astype(int)),
-            int(self.__target_radius * self.__pix_square_size)
+            int(np.ceil(self.__target_radius * self.__pix_square_size))
         )
         # Now we draw the agent with the appropriate orientation
         angle_deg = -np.degrees(self._orientation)
         rotated_img = pygame.transform.rotate(self._agent_img, angle_deg)
-        center = (self._agent_location[::-1] + 0.5) * self.__pix_square_size
-        rect = rotated_img.get_rect(center=center)
+        center = ((self._agent_location[::-1] + 0.5) * self.__pix_square_size).astype(int)
+        rect = rotated_img.get_rect(center=tuple(center))
         canvas.blit(rotated_img, rect)
 
         # Red and white blood cells rendering
@@ -429,7 +435,7 @@ class NanoEnv(gym.Env):
                 canvas,
                 (255, 0, 0),
                 tuple(((red_cell[::-1] + 0.5) * self.__pix_square_size).astype(int)),
-                int(self.__cell_radius * self.__pix_square_size)
+                int(np.ceil(self.__cell_radius * self.__pix_square_size))
             )
 
         for white_cell in self._white_cells:
@@ -437,7 +443,7 @@ class NanoEnv(gym.Env):
                 canvas,
                 (255, 255, 255),
                 tuple(((white_cell[::-1] + 0.5) * self.__pix_square_size).astype(int)),
-                int(self.__cell_radius * self.__pix_square_size)
+                int(np.ceil(self.__cell_radius * self.__pix_square_size))
             )
 
 
