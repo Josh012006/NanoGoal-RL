@@ -311,7 +311,7 @@ class NanoEnv(gym.Env):
             tuple: (observation, reward, terminated, truncated, info)
         """
 
-        reward = 0
+        reward = -0.01 # so that the agent doesn't stay motionless
         terminated = False
         truncated = False
 
@@ -361,7 +361,7 @@ class NanoEnv(gym.Env):
         # Reward for decreasing the distance between the agent and the target
         dbefore = np.linalg.norm(old_agent_location - self._target_location)
         dafter = np.linalg.norm(self._agent_location - self._target_location)
-        reward += (dbefore - dafter) / self.__initial_distance
+        reward += 3.0 * (dbefore - dafter) / self.__initial_distance
 
         # Discourage spins and changes in orientation that are too great
         alpha_theta = 0.008
