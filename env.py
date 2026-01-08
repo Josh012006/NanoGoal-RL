@@ -119,7 +119,7 @@ class NanoEnv(gym.Env):
         x0, y0 = float(self._agent_location[0]), float(self._agent_location[1])
 
         # Angles of the rays (8 directions)
-        angles = self._orientation + np.linspace(0.0, 2.0 * np.pi, num=self._lidar_n, endpoint=False)
+        angles = np.linspace(0.0, 2.0 * np.pi, num=self._lidar_n, endpoint=False)
 
         out = np.empty((self._lidar_n,), dtype=np.float32)
 
@@ -454,13 +454,12 @@ class NanoEnv(gym.Env):
         # Discourage spins and changes in orientation that are too great
         alpha_v = 0.006
         reward += - alpha_v * (action[0] ** 2)
-        self._velocity = np.clip(self._velocity + delta_v, 0.0, self._max_v)
 
-        beta_theta = 0.001
-        theta_old = self._orientation
+        alpha_theta = 0.002
+        reward += -alpha_theta * (action[1] ** 2)
+
+        self._velocity = np.clip(self._velocity + delta_v, 0.0, self._max_v)
         self._orientation = wrap(self._orientation + delta_theta)
-        dtheta = wrap(self._orientation - theta_old)
-        reward += - beta_theta * (dtheta ** 2)
 
 
         # Compute new agent and cells continuous positions with collisions management
