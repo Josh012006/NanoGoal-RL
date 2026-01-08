@@ -233,7 +233,7 @@ class NanoEnv(gym.Env):
             pos: np.array([x, y]) in float32
             r: radius in "cell units" (same unit as __agent_radius)
         """
-        
+
         x = float(pos[0])
         y = float(pos[1])
 
@@ -300,39 +300,39 @@ class NanoEnv(gym.Env):
 
 
         # Generate a pseudo-random but also valid vessel topology for the episode
-        self._vessel_topology = self._generate_logical_topology(used_seed)
-
-        # Take the available space to select the entities locations while also checking that 
-        # there is enough space around tha agent and the target for the experience to work
-        available_space = main_related_component(self._vessel_topology, self._size, self._size)
-        available_space = self._filter_by_clearance(available_space, self.__agent_radius)
-        available_space = self._filter_by_clearance(available_space, self.__target_radius)
-
         new_seed = 1 + 0 if used_seed == None else used_seed
-        while len(available_space) <= 100: # making sure there is at least a related component in the generated environment
+        repeter = True
+        while repeter:
             self._vessel_topology = self._generate_logical_topology(new_seed)
-            available_space = main_related_component(self._vessel_topology, self._size, self._size)
-            new_seed += 1
 
-        # Randomly generated target and agent locations in regard to the topology 
+            available_space = main_related_component(self._vessel_topology, self._size, self._size)
+            available_space = self._filter_by_clearance(available_space, max(self.__agent_radius, self.__target_radius))
+
+            new_seed += 1
+            if len(available_space) > 100:
+                repeter = False
+        
+
+        # Randomly generated target and agent locations in the available space
         repeter1 = True
         while repeter1:
             agent_int = self.np_random.integers(0, len(available_space))
-            chosen_location = np.array(list(available_space[agent_int]), dtype=np.float32)
-            if 10 <= chosen_location[0] <= self._size - 10 and 10 <= chosen_location[1] <= self._size - 10 :
+            init_agent_location = available_space[agent_int].copy()
+            if 10 <= init_agent_location[0] <= self._size - 10 and 10 <= init_agent_location[1] <= self._size - 10 :
                 repeter1 = False
 
-        self._agent_location = chosen_location
+        self._agent_location = init_agent_location
         available_space.pop(agent_int)
 
         repeter2 = True
         while repeter2:
             target_int = self.np_random.integers(0, len(available_space))
-            self._target_location = np.array(list(available_space[target_int]), dtype=np.float32)
+            init_target_location = available_space[target_int].copy()
             d0 = np.linalg.norm(self._agent_location - self._target_location)
             if d0 >= 10:
                 repeter2 = False
         
+        self._target_location = init_target_location
         self.__initial_distance = d0
         self._best_dist = d0
         available_space.pop(target_int)
