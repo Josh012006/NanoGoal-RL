@@ -4,7 +4,6 @@ import numpy as np
 import pygame
 from noise import pnoise2
 from utils import main_related_component
-
 from gymnasium.envs.registration import register
 
 class NanoEnv(gym.Env):
@@ -22,8 +21,8 @@ class NanoEnv(gym.Env):
 
         # Lidar (raycasts) parameters
         self._lidar_n = 8
-        self._lidar_max_range = 20.0  
-        self._lidar_step = 0.25        
+        self._lidar_max_range = 20.0
+        self._lidar_step = 0.25
 
         # Entities characteristics
         self.__agent_radius = 1.2
@@ -82,9 +81,8 @@ class NanoEnv(gym.Env):
         )  # The size of a single grid square in pixels
 
         # The window and the clock we will use for rendering
-        self._window = None 
+        self._window = None
         self._clock = None
-
 
         # What the agent can observe
         self.observation_space = gym.spaces.Dict(
@@ -92,9 +90,9 @@ class NanoEnv(gym.Env):
                 # -1.0 and size will be used to reprensent element outside of the visible box
                 "agent" : gym.spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32),
                 "mvt" : gym.spaces.Box(
-                    low=np.array([0.0, -1.0, -1.0], dtype=np.float32), 
-                    high=np.array([self._max_v, 1.0, 1.0], dtype=np.float32), 
-                    shape=(3,), 
+                    low=np.array([0.0, -1.0, -1.0], dtype=np.float32),
+                    high=np.array([self._max_v, 1.0, 1.0], dtype=np.float32),
+                    shape=(3,),
                     dtype=np.float32
                 ),
                 "delta_goal":gym.spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32),
@@ -104,12 +102,11 @@ class NanoEnv(gym.Env):
 
         # The actions available to the agent
         self.action_space = gym.spaces.Box(
-            low=-1.0, 
-            high=1.0, 
-            shape=(2,), 
+            low=-1.0,
+            high=1.0,
+            shape=(2,),
             dtype=np.float32
         )
-
 
     def _lidar_walls(self):
         """Returns an array of shape (n,) with normalized distances [0, 1] toward the first wall
@@ -154,8 +151,6 @@ class NanoEnv(gym.Env):
 
         return out
 
-
-    
     def _get_obs(self):
         """Convert the internal state to observation format
 
@@ -170,24 +165,24 @@ class NanoEnv(gym.Env):
 
         return {
             "agent" : normalize(self._agent_location),
-            "mvt" : np.array([
-                    self._velocity, 
-                    np.sin(self._orientation), 
+            "mvt" : np.array(
+                [
+                    self._velocity,
+                    np.sin(self._orientation),
                     np.cos(self._orientation)
-                ], 
+                ],
                 dtype=np.float32
             ),
             "delta_goal": np.clip((self._target_location - self._agent_location) / self._size, -1.0, 1.0),
             "lidar": self._lidar_walls()
         }
-    
+
     def _get_info(self):
         """Compute auxiliary information for debugging.
 
         Returns:
             dict: Info with distance between agent and target and if the experience is a success or not
         """
-
         distance = np.linalg.norm(self._agent_location - self._target_location)
 
         return {
@@ -196,11 +191,10 @@ class NanoEnv(gym.Env):
             "best_dist": self._best_dist
         }
 
-
     def _generate_logical_topology(self, seed: Optional[int] = None):
         """Generates a size x size matrix describing the vessel's topology. It must be a valid topology
             but it must also have a bit of diversity (randomness). It uses Perlin's noise.
-        
+
         Returns:
             matrix: a numpy array describing the generated topology
         """
@@ -223,67 +217,13 @@ class NanoEnv(gym.Env):
         grid = (computed <= t).astype(int)
 
         return grid
-    
 
-    def _has_clearance(self, pos: np.ndarray, r: float):
-        """
-        Returns True if a disk of radius r centered at pos (x=i, y=j in continuous coordinates)
-        does not intersect any wall (topology == 1) and stays within the grid.
-        Args:
-            pos: np.array([x, y]) in float32
-            r: radius in "cell units" (same unit as __agent_radius)
-        """
-
-        x = float(pos[0])
-        y = float(pos[1])
-
-        # Si le disque sort de la grille -> pas acceptable
-        if x - r < 0.0 or y - r < 0.0 or x + r >= self._size or y + r >= self._size:
-            return False
-
-        # Bounding box de cellules candidates
-        i0 = int(np.floor(x - r))
-        i1 = int(np.floor(x + r))
-        j0 = int(np.floor(y - r))
-        j1 = int(np.floor(y + r))
-
-        for i in range(i0, i1 + 1):
-            for j in range(j0, j1 + 1):
-                if self._vessel_topology[i, j] != 1:
-                    continue
-
-                # collision disque (x,y,r) vs carré cellule [i,i+1]x[j,j+1]
-                cx = np.clip(x, i, i + 1.0)
-                cy = np.clip(y, j, j + 1.0)
-                dx = x - cx
-                dy = y - cy
-
-                if dx * dx + dy * dy < r * r:
-                    return False
-
-        return True
-
-    def _filter_by_clearance(self, cells, r: float):
-        """Generated by CHATGPT
-        cells: List/set of tuples (i, j)coming from main_related_component.
-
-        Returns:
-            list: a list of np.array([i, j]) that satisfy the clearance constraint.
-        """
-        out = []
-        for (i, j) in cells:
-            p = np.array([i, j], dtype=np.float32)
-            if self._has_clearance(p, r):
-                out.append(p)
-        return out
-
-    
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
         """Start a new episode.
 
         Args:
             seed: Random seed for reproducible episodes
-            options: Additional configuration namely 
+            options: Additional configuration namely
                 - nb_red which is the wanted number of red cells with 0 <= nb_red <= max_red
                 - nb_white which is the wanted number of white cells with 0 <= nb_white <= max_white
 
@@ -295,44 +235,32 @@ class NanoEnv(gym.Env):
         used_seed = seed if not self.frozen else 100
         super().reset(seed=used_seed)
 
-        # Reset the success variable
         self._is_success = False
 
-
         # Generate a pseudo-random but also valid vessel topology for the episode
+        self._vessel_topology = self._generate_logical_topology(used_seed)
+        available_space = main_related_component(self._vessel_topology, self._size, self._size)
+
         new_seed = 1 + 0 if used_seed == None else used_seed
-        repeter = True
-        while repeter:
+
+        while len(available_space) <= 100: # making sure there is at least a related component in the generated environment
             self._vessel_topology = self._generate_logical_topology(new_seed)
-
             available_space = main_related_component(self._vessel_topology, self._size, self._size)
-            available_space = self._filter_by_clearance(available_space, max(self.__agent_radius, self.__target_radius))
-
             new_seed += 1
-            if len(available_space) > 100:
-                repeter = False
-        
 
-        # Randomly generated target and agent locations in the available space
-        repeter1 = True
-        while repeter1:
-            agent_int = self.np_random.integers(0, len(available_space))
-            init_agent_location = available_space[agent_int].copy()
-            if 10 <= init_agent_location[0] <= self._size - 10 and 10 <= init_agent_location[1] <= self._size - 10 :
-                repeter1 = False
-
-        self._agent_location = init_agent_location
+        # Randomly generated target and agent locations in regard to the topology
+        agent_int = self.np_random.integers(0, len(available_space))
+        self._agent_location = np.array(list(available_space[agent_int]), dtype=np.float32)
         available_space.pop(agent_int)
 
-        repeter2 = True
-        while repeter2:
+        repeter = True
+        while repeter:
             target_int = self.np_random.integers(0, len(available_space))
-            init_target_location = available_space[target_int].copy()
-            d0 = np.linalg.norm(self._agent_location - init_target_location)
+            self._target_location = np.array(list(available_space[target_int]), dtype=np.float32)
+            d0 = np.linalg.norm(self._agent_location - self._target_location)
             if d0 >= 10:
-                repeter2 = False
-        
-        self._target_location = init_target_location
+                repeter = False
+
         self.__initial_distance = d0
         self._best_dist = d0
         available_space.pop(target_int)
@@ -341,7 +269,7 @@ class NanoEnv(gym.Env):
         self._velocity = 0.0
         self._orientation = self.np_random.uniform(-np.pi, np.pi)
 
-        # Set the time limit 
+        # Set the time limit
         self.__timelimit = min(3 + 2 * self.__initial_distance, 40)
         self._time = 0.0
 
@@ -352,23 +280,24 @@ class NanoEnv(gym.Env):
         nb_red = min(len(available_space) // 2, min(self._max_red, nb_red))
         self._nb_red = nb_red
         self._red_cells = np.full(shape=(self._max_red, 2), fill_value=-1, dtype=np.float32)
+
         for i in range(nb_red):
             drawn_int = self.np_random.integers(0, len(available_space))
             self._red_cells[i] = list(available_space[drawn_int])
             available_space.pop(drawn_int)
-        
+
         nb_white = 0 if self._max_white == 0 else self.np_random.integers(0, self._max_white)
         if options != None and "nb_white" in options:
             nb_white = max(0, options["nb_white"])
         nb_white = min(len(available_space), min(self._max_white, nb_white))
         self._nb_white = nb_white
         self._white_cells = np.full(shape=(self._max_white, 2), fill_value=-1, dtype=np.float32)
+
         for i in range(nb_white):
             drawn_int = self.np_random.integers(0, len(available_space))
             self._white_cells[i] = list(available_space[drawn_int])
             available_space.pop(drawn_int)
 
-        
         observation = self._get_obs()
         info = self._get_info()
 
@@ -376,20 +305,19 @@ class NanoEnv(gym.Env):
             self._render_frame()
 
         return observation, info
-    
 
     def _manage_wall_collision(self, old_location, new_location, radius):
         """Logic to verify wall collision with a cell or the agent. Was refactored with the help of AI (CHATGPT).
         Args:
             old_location: the previous location of the entity
             new_location: the location it wants to attain after the step
-            radius: the entity's radius 
+            radius: the entity's radius
         """
         x0, y0 = old_location[0], old_location[1]
         x1, y1 = new_location[0], new_location[1]
         r = radius
 
-        def touche_mur(x, y):
+        def touche_mur(x, y) -> bool:
             # Grid's cells potentially touched by the entity
             i0 = int(np.floor(x - r))
             i1 = int(np.floor(x + r))
@@ -410,8 +338,10 @@ class NanoEnv(gym.Env):
                     cy = np.clip(y, j, j + 1.0)
                     dx = x - cx
                     dy = y - cy
+
                     if dx * dx + dy * dy < r * r:
                         return True
+
             return False
 
         # If no collision, just move
@@ -427,13 +357,12 @@ class NanoEnv(gym.Env):
 
         # If the entity is completely blocked, don't move
         return np.array([x0, y0], dtype=np.float32)
-    
-    
+
     def step(self, action):
         """Execute one timestep within the environment.
 
         Args:
-            action: The action to take, namely an array in the format [float, float] where the first component is 
+            action: The action to take, namely an array in the format [float, float] where the first component is
                 the component to add to the velocity and the second one is the component to add to
                 the orientation. Both can be negative.
 
@@ -441,26 +370,18 @@ class NanoEnv(gym.Env):
             tuple: (observation, reward, terminated, truncated, info)
         """
 
-        reward = 0 
+        reward = 0
         terminated = False
         truncated = False
 
         wrap = lambda x : (x + np.pi) % (2 * np.pi) - np.pi # helper function
-        
+
         # Updating the agent's new velocity and orientation
         delta_v = np.clip(action[0], -1.0, 1.0) * self.__action_v_limit
         delta_theta = np.clip(action[1], -1.0, 1.0) * self.__action_theta_limit
 
-        # Discourage spins and changes in orientation that are too great
-        alpha_v = 0.006
-        reward += - alpha_v * (action[0] ** 2)
-
-        alpha_theta = 0.002
-        reward += -alpha_theta * (action[1] ** 2)
-
         self._velocity = np.clip(self._velocity + delta_v, 0.0, self._max_v)
         self._orientation = wrap(self._orientation + delta_theta)
-
 
         # Compute new agent and cells continuous positions with collisions management
         old_agent_location = self._agent_location.copy()
@@ -471,11 +392,10 @@ class NanoEnv(gym.Env):
         for i in range(self._nb_red):
             new_red_cell_position = self._red_cells[i] + self.__v_blood * self.__timestep
             self._red_cells[i] = self._manage_wall_collision(self._red_cells[i], new_red_cell_position, self.__cell_radius)
-        
+
         for i in range(self._nb_white):
             new_white_cell_position = self._white_cells[i] + self.__v_blood * self.__timestep
-            self._white_cells[i] =  self._manage_wall_collision(self._white_cells[i], new_white_cell_position, self.__cell_radius)
-
+            self._white_cells[i] = self._manage_wall_collision(self._white_cells[i], new_white_cell_position, self.__cell_radius)
 
         # Agent-cell collision
         beta = 0.6
@@ -485,21 +405,22 @@ class NanoEnv(gym.Env):
                 self._velocity = np.clip(self._velocity - beta, 0.0, self._max_v)
                 reward += self.__penalty_red_cell
                 break
-        
+
         for i in range(self._nb_white):
             if np.linalg.norm(self._white_cells[i] - self._agent_location) < self.__agent_radius + self.__cell_radius:
                 self._velocity = np.clip(self._velocity - beta - 0.1, 0.0, self._max_v)
                 reward += self.__penalty_white_cell
                 break
-        
+
         # Reward for decreasing the distance between the agent and the target
         dbefore = np.linalg.norm(old_agent_location - self._target_location)
         dafter = np.linalg.norm(self._agent_location - self._target_location)
         p = np.clip((dbefore - dafter) / self.__initial_distance, -1.0, 1.0)
         reward += 10.0 * p
+
         if dafter < self._best_dist:
             gain = (self._best_dist - dafter) / (self.__initial_distance + 1e-8)
-            reward += 3.0 * float(np.clip(gain, 0.0, 1.0)) 
+            reward += 3.0 * float(np.clip(gain, 0.0, 1.0))
             self._best_dist = dafter
 
         # Make sure the agent doesn't stay motionless
@@ -508,26 +429,30 @@ class NanoEnv(gym.Env):
         else:
             reward += -0.01
 
+        # Discourage spins and changes in orientation that are too great
+        alpha_v = 0.006
+        reward += - alpha_v * (action[0] ** 2)
+
+        alpha_theta = 0.002
+        reward += - alpha_theta * (action[1] ** 2)
+
         if np.linalg.norm(self._agent_location - self._target_location) <= self.__agent_radius + self.__target_radius:
             terminated = True
             self._is_success = True
             reward += 100.0
-        truncated = self._time > self.__timelimit
 
+        truncated = self._time > self.__timelimit
 
         # Prevent the agent from letting the fluid transport it outside the blood vessel
         if self._agent_location[0] < 0 or self._agent_location[1] < 0 or self._agent_location[0] >= self._size or self._agent_location[1] >= self._size:
             reward += -50.0
             terminated = True
 
-        
         if truncated:
             reward += -10.0
 
-        
-        # Update the timer  
+        # Update the timer
         self._time += self.__timestep
-        
 
         observation = self._get_obs()
         info = self._get_info()
@@ -537,12 +462,10 @@ class NanoEnv(gym.Env):
             self._render_frame()
 
         return observation, reward, terminated, truncated, info
-    
 
     def render(self):
         if self.render_mode == "rgb_array":
             return self._render_frame()
-
 
     def _render_frame(self):
         if self._window is None and self.render_mode == "human":
@@ -551,14 +474,14 @@ class NanoEnv(gym.Env):
             self._window = pygame.display.set_mode(
                 (self._window_size, self._window_size)
             )
-            
+
             self._agent_img = pygame.image.load("assets/agent.png").convert_alpha()
             rect = self._agent_img.get_bounding_rect(min_alpha=10)
             self._agent_img = self._agent_img.subsurface(rect).copy()
             d_px = int(round(2 * self.__agent_radius * self.__pix_square_size))
             d_px = max(2, d_px)
             self._agent_img = pygame.transform.smoothscale(self._agent_img, (d_px, d_px))
-        
+
         if self._clock is None and self.render_mode == "human":
             self._clock = pygame.time.Clock()
 
@@ -579,13 +502,13 @@ class NanoEnv(gym.Env):
                 )
 
         # First we draw the target
-        # Convert [row, col] to pygame (x, y) by reversing the coordinates
         pygame.draw.circle(
             canvas,
             (255, 255, 153),
             tuple(((self._target_location[::-1] + 0.5) * self.__pix_square_size).astype(int)),
             int(np.ceil(self.__target_radius * self.__pix_square_size))
         )
+
         # Now we draw the agent with the appropriate orientation
         angle_deg = -np.degrees(self._orientation)
         rotated_img = pygame.transform.rotate(self._agent_img, angle_deg)
@@ -610,28 +533,20 @@ class NanoEnv(gym.Env):
                 int(np.ceil(self.__cell_radius * self.__pix_square_size))
             )
 
-
         if self.render_mode == "human":
-            # The following line copies our drawings from `canvas` to the visible window
             self._window.blit(canvas, canvas.get_rect())
             pygame.event.pump()
             pygame.display.update()
-
-            # We need to ensure that human-rendering occurs at the predefined framerate.
-            # The following line will automatically add a delay to keep the framerate stable.
             self._clock.tick(self.metadata["render_fps"])
         else:  # rgb_array
             return np.transpose(
                 np.array(pygame.surfarray.pixels3d(canvas)), axes=(1, 0, 2)
             )
-        
-    
+
     def close(self):
         if self._window is not None:
             pygame.display.quit()
             pygame.quit()
-
-
 
 register(
     id="Nano-v0",
