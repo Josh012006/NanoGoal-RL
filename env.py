@@ -25,8 +25,8 @@ class NanoEnv(gym.Env):
         # The number of red and white cells in the simulation. An exact number will be chosen randomly
         self._nb_red = 0
         self._nb_white = 0
-        self._max_red = max(0, min(max_red, 20))
-        self._max_white = max(0, min(max_white, 20))
+        self._max_red = np.clip(int(max_red), 0, 20)
+        self._max_white = np.clip(int(max_white), 0, 20)
 
         # The maximum velocity of the agent. They are useful to define real-life constraint on the agent
         self._max_v = max_v
@@ -46,6 +46,10 @@ class NanoEnv(gym.Env):
         # Initial agent's velocity and orientation
         self._velocity = 0.0
         self._orientation = 0.0
+
+        # The limits on the variation of velocity and orientation in the action
+        self.__action_v_limit = 2.0
+        self.__action_theta_limit = np.pi/12
 
         # Penalty collision
         self.__penalty_red_cell = -3.0
@@ -82,15 +86,15 @@ class NanoEnv(gym.Env):
                     shape=(2,), 
                     dtype=np.float32
                 ),
-                "red" : gym.spaces.Box(-1.0, float(self._size), shape=(self._max_red, 2), dtype=np.float32),
-                "white" : gym.spaces.Box(-1.0, float(self._size), shape=(self._max_white, 2), dtype=np.float32)
+                "red" : gym.spaces.Box(-1.0, float(self._size), shape=(2 * self._max_red,), dtype=np.float32),
+                "white" : gym.spaces.Box(-1.0, float(self._size), shape=(2 * self._max_white,), dtype=np.float32)
             }
         )
 
         # The actions available to the agent
         self.action_space = gym.spaces.Box(
-            low=np.array([-self._max_v, -np.pi], dtype=np.float32), 
-            high=np.array([self._max_v, np.pi], dtype=np.float32), 
+            low=-1.0, 
+            high=1.0, 
             shape=(2,), 
             dtype=np.float32
         )
@@ -108,20 +112,22 @@ class NanoEnv(gym.Env):
             "agent" : self._agent_location,
             "target" : self._target_location,
             "mvt" : np.array([self._velocity, self._orientation], dtype=np.float32),
-            "red" : self._red_cells,
-            "white" : self._white_cells
+            "red" : self._red_cells.reshape(-1),
+            "white" : self._white_cells.reshape(-1)
         }
     
     def _get_info(self):
         """Compute auxiliary information for debugging.
 
         Returns:
-            dict: Info with distance between agent and target
+            dict: Info with distance between agent and target and if the experience is a success or not
         """
+
+        distance = np.linalg.norm(self._agent_location - self._target_location)
+
         return {
-            "distance": np.linalg.norm(
-                self._agent_location - self._target_location
-            )
+            "distance": distance,
+            "is_success": distance <= self.__agent_radius + self.__target_radius
         }
 
 
@@ -196,7 +202,7 @@ class NanoEnv(gym.Env):
         # Set the time limit 
         d0 = np.linalg.norm(self._agent_location - self._target_location)
         self.__initial_distance = d0
-        self.__timelimit = min(3 + 2 * d0, 32)
+        self.__timelimit = min(3 + 2 * d0, 40)
 
         # Random red and white cells locations in regard to the topology and the options nb_red and nb_white
         nb_red = self.np_random.integers(0, self._max_red)
@@ -259,8 +265,8 @@ class NanoEnv(gym.Env):
                     if self._vessel_topology[i, j] != 1:
                         continue
 
-                    cx = min(max(x, i), i + 1.0)  # clamp sur le carré
-                    cy = min(max(y, j), j + 1.0)
+                    cx = np.clip(x, i, i + 1.0) # clamp sur le carré
+                    cy = np.clip(y, j, j + 1.0)
                     dx = x - cx
                     dy = y - cy
                     if dx * dx + dy * dy < r * r:
@@ -301,10 +307,10 @@ class NanoEnv(gym.Env):
         wrap = lambda x : (x + np.pi) % (2 * np.pi) - np.pi # helper function
         
         # Updating the agent's new velocity and orientation
-        delta_v = max(-2.0, min(action[0], 2.0)) # -2.0 <= delta_v <= 2.0
-        delta_theta = max(-0.2, min(action[1], 0.2)) # -0.2 <= delta_theta <= 0.2
+        delta_v = np.clip(action[0], -1.0, 1.0) * self.__action_v_limit
+        delta_theta = np.clip(action[1], -1.0, 1.0) * self.__action_theta_limit
 
-        self._velocity = max(0.0, min(self._velocity + delta_v, self._max_v))
+        self._velocity = np.clip(self._velocity + delta_v, 0.0, self._max_v)
         self._orientation = wrap(self._orientation + delta_theta)
 
 
@@ -344,13 +350,13 @@ class NanoEnv(gym.Env):
 
         if np.linalg.norm(self._agent_location - self._target_location) <= self.__agent_radius + self.__target_radius:
             terminated = True
-            reward += 100
+            reward += 100.0
         truncated = self._time > self.__timelimit
 
 
         # Prevent the agent from letting the fluid transport it outside the blood vessel
         if self._agent_location[0] < 0 or self._agent_location[1] < 0 or self._agent_location[0] >= self._size or self._agent_location[1] >= self._size:
-            reward += -50
+            reward += -200.0
             truncated = True
             terminated = True
 
@@ -361,6 +367,7 @@ class NanoEnv(gym.Env):
 
         observation = self._get_obs()
         info = self._get_info()
+        reward = float(reward)
 
         if self.render_mode == "human":
             self._render_frame()

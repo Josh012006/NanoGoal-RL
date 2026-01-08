@@ -32,7 +32,7 @@ def main_related_component(grid, height, width):
             for p in [-1, 0, 1]:
                 for q in [-1, 0, 1]:
                     i1 = i + p; j1 = j + q
-                    if (p != 0 or q != 0) and i1 >= 0 and i1 < height and j1 >= 0 and j1 < width :
+                    if (p != 0 or q != 0) and 0 <= i1 < height and 0 <= j1 < width :
                         if work_grid[i1][j1] == 0: 
                             work_grid[i1][j1] = 2
                             related_component.append((i1, j1))

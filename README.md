@@ -48,6 +48,7 @@ The implementation relies on standard RL libraries to ensure reproducibility and
 - Gymnasium
 - Stable-Baselines3
 - PyTorch
+- Tensorboard
 - Matplotlib
 
 ## Results
