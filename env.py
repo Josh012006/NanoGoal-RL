@@ -20,6 +20,11 @@ class NanoEnv(gym.Env):
         self._size = 125  # grid's size
         self._vessel_topology = np.zeros(shape=(self._size, self._size), dtype=int) # the vessels layout as a grid with 0 being the empty spaces and 1 being occupied ones by walls
 
+        # Lidar (raycasts) parameters
+        self._lidar_n = 8
+        self._lidar_max_range = 20.0  
+        self._lidar_step = 0.25        
+
         # Entities characteristics
         self.__agent_radius = 1.2
         self.__cell_radius = 0.8
@@ -50,9 +55,13 @@ class NanoEnv(gym.Env):
         self._velocity = 0.0
         self._orientation = 0.0
 
+        # Prepare the reward for improvement in distance
+        self._best_dist = np.inf
+        self._is_success = False
+
         # The limits on the variation of velocity and orientation in the action
         self.__action_v_limit = 2.0
-        self.__action_theta_limit = np.pi/12
+        self.__action_theta_limit = np.pi/6
 
         # Penalty collision
         self.__penalty_red_cell = -3.0
@@ -82,7 +91,6 @@ class NanoEnv(gym.Env):
             {
                 # -1.0 and size will be used to reprensent element outside of the visible box
                 "agent" : gym.spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32),
-                "target" : gym.spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32),
                 "mvt" : gym.spaces.Box(
                     low=np.array([0.0, -1.0, -1.0], dtype=np.float32), 
                     high=np.array([self._max_v, 1.0, 1.0], dtype=np.float32), 
@@ -90,8 +98,7 @@ class NanoEnv(gym.Env):
                     dtype=np.float32
                 ),
                 "delta_goal":gym.spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32),
-                "red" : gym.spaces.Box(-1.0, 1.0, shape=(2 * self._max_red,), dtype=np.float32),
-                "white" : gym.spaces.Box(-1.0, 1.0, shape=(2 * self._max_white,), dtype=np.float32)
+                "lidar": gym.spaces.Box(0.0, 1.0, shape=(self._lidar_n,), dtype=np.float32)
             }
         )
 
@@ -104,6 +111,50 @@ class NanoEnv(gym.Env):
         )
 
 
+    def _lidar_walls(self):
+        """Returns an array of shape (n,) with normalized distances [0, 1] toward the first wall
+        encountered. Generated with CHATGPT.
+        1.0 = empty until max_range, 0.0 = very close to a wall.
+        """
+        x0, y0 = float(self._agent_location[0]), float(self._agent_location[1])
+
+        # Angles of the rays (8 directions)
+        angles = self._orientation + np.linspace(0.0, 2.0 * np.pi, num=self._lidar_n, endpoint=False)
+
+        out = np.empty((self._lidar_n,), dtype=np.float32)
+
+        # We start outside the agent's radius
+        start = float(self.__agent_radius) * 1.05
+
+        for k, a in enumerate(angles):
+            dx = float(np.cos(a))
+            dy = float(np.sin(a))
+
+            dist = start
+
+            # Check along the ray's direction
+            while dist <= self._lidar_max_range:
+                x = x0 + dx * dist
+                y = y0 + dy * dist
+
+                # We consider outside the grid's bounds as a wall
+                if x < 0.0 or y < 0.0 or x >= self._size or y >= self._size:
+                    break
+
+                i = int(np.floor(x))
+                j = int(np.floor(y))
+
+                if self._vessel_topology[i, j] == 1:
+                    break
+
+                dist += self._lidar_step
+
+            d = min(dist, self._lidar_max_range)
+            out[k] = np.float32(d / self._lidar_max_range)
+
+        return out
+
+
     
     def _get_obs(self):
         """Convert the internal state to observation format
@@ -112,11 +163,13 @@ class NanoEnv(gym.Env):
             dict: Observation with agent and target positions, obstacles positions and  current motion parameters
         """
 
-        normalize = lambda x : 2 * ((x + 1) / (self._size + 1)) - 1
+        def normalize(x):
+            x = np.asarray(x, dtype=np.float32)
+            x = np.clip(x, 0.0, self._size - 1)
+            return 2.0 * (x / (self._size - 1)) - 1.0
 
         return {
             "agent" : normalize(self._agent_location),
-            "target" : normalize(self._target_location),
             "mvt" : np.array([
                     self._velocity, 
                     np.sin(self._orientation), 
@@ -124,9 +177,8 @@ class NanoEnv(gym.Env):
                 ], 
                 dtype=np.float32
             ),
-            "delta_goal": (self._target_location - self._agent_location) / self._size,
-            "red" : normalize(self._red_cells.reshape(-1)),
-            "white" : normalize(self._white_cells.reshape(-1))
+            "delta_goal": np.clip((self._target_location - self._agent_location) / self._size, -1.0, 1.0),
+            "lidar": self._lidar_walls()
         }
     
     def _get_info(self):
@@ -140,7 +192,8 @@ class NanoEnv(gym.Env):
 
         return {
             "distance": distance,
-            "is_success": distance <= self.__agent_radius + self.__target_radius
+            "is_success": self._is_success,
+            "best_dist": self._best_dist
         }
 
 
@@ -170,6 +223,59 @@ class NanoEnv(gym.Env):
         grid = (computed <= t).astype(int)
 
         return grid
+    
+
+    def _has_clearance(self, pos: np.ndarray, r: float):
+        """
+        Returns True if a disk of radius r centered at pos (x=i, y=j in continuous coordinates)
+        does not intersect any wall (topology == 1) and stays within the grid.
+        Args:
+            pos: np.array([x, y]) in float32
+            r: radius in "cell units" (same unit as __agent_radius)
+        """
+        
+        x = float(pos[0])
+        y = float(pos[1])
+
+        # Si le disque sort de la grille -> pas acceptable
+        if x - r < 0.0 or y - r < 0.0 or x + r >= self._size or y + r >= self._size:
+            return False
+
+        # Bounding box de cellules candidates
+        i0 = int(np.floor(x - r))
+        i1 = int(np.floor(x + r))
+        j0 = int(np.floor(y - r))
+        j1 = int(np.floor(y + r))
+
+        for i in range(i0, i1 + 1):
+            for j in range(j0, j1 + 1):
+                if self._vessel_topology[i, j] != 1:
+                    continue
+
+                # collision disque (x,y,r) vs carré cellule [i,i+1]x[j,j+1]
+                cx = np.clip(x, i, i + 1.0)
+                cy = np.clip(y, j, j + 1.0)
+                dx = x - cx
+                dy = y - cy
+
+                if dx * dx + dy * dy < r * r:
+                    return False
+
+        return True
+
+    def _filter_by_clearance(self, cells, r: float):
+        """Generated by CHATGPT
+        cells: List/set of tuples (i, j)coming from main_related_component.
+
+        Returns:
+            list: a list of np.array([i, j]) that satisfy the clearance constraint.
+        """
+        out = []
+        for (i, j) in cells:
+            p = np.array([i, j], dtype=np.float32)
+            if self._has_clearance(p, r):
+                out.append(p)
+        return out
 
     
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
@@ -189,11 +295,19 @@ class NanoEnv(gym.Env):
         used_seed = seed if not self.frozen else 100
         super().reset(seed=used_seed)
 
+        # Reset the success variable
+        self._is_success = False
+
 
         # Generate a pseudo-random but also valid vessel topology for the episode
         self._vessel_topology = self._generate_logical_topology(used_seed)
 
+        # Take the available space to select the entities locations while also checking that 
+        # there is enough space around tha agent and the target for the experience to work
         available_space = main_related_component(self._vessel_topology, self._size, self._size)
+        available_space = self._filter_by_clearance(available_space, self.__agent_radius)
+        available_space = self._filter_by_clearance(available_space, self.__target_radius)
+
         new_seed = 1 + 0 if used_seed == None else used_seed
         while len(available_space) <= 100: # making sure there is at least a related component in the generated environment
             self._vessel_topology = self._generate_logical_topology(new_seed)
@@ -201,19 +315,26 @@ class NanoEnv(gym.Env):
             new_seed += 1
 
         # Randomly generated target and agent locations in regard to the topology 
-        agent_int = self.np_random.integers(0, len(available_space))
-        self._agent_location = np.array(list(available_space[agent_int]), dtype=np.float32)
+        repeter1 = True
+        while repeter1:
+            agent_int = self.np_random.integers(0, len(available_space))
+            chosen_location = np.array(list(available_space[agent_int]), dtype=np.float32)
+            if 10 <= chosen_location[0] <= self._size - 10 and 10 <= chosen_location[1] <= self._size - 10 :
+                repeter1 = False
+
+        self._agent_location = chosen_location
         available_space.pop(agent_int)
 
-        repeter = True
-        while repeter:
+        repeter2 = True
+        while repeter2:
             target_int = self.np_random.integers(0, len(available_space))
             self._target_location = np.array(list(available_space[target_int]), dtype=np.float32)
             d0 = np.linalg.norm(self._agent_location - self._target_location)
             if d0 >= 10:
-                repeter = False
+                repeter2 = False
         
         self.__initial_distance = d0
+        self._best_dist = d0
         available_space.pop(target_int)
 
         # Velocity and orientation at the start of an episode
@@ -225,7 +346,7 @@ class NanoEnv(gym.Env):
         self._time = 0.0
 
         # Random red and white cells locations in regard to the topology and the options nb_red and nb_white
-        nb_red = self.np_random.integers(0, self._max_red)
+        nb_red = 0 if self._max_red == 0 else self.np_random.integers(0, self._max_red)
         if options != None and "nb_red" in options:
             nb_red = max(0, options["nb_red"])
         nb_red = min(len(available_space) // 2, min(self._max_red, nb_red))
@@ -236,7 +357,7 @@ class NanoEnv(gym.Env):
             self._red_cells[i] = list(available_space[drawn_int])
             available_space.pop(drawn_int)
         
-        nb_white = self.np_random.integers(0, self._max_white)
+        nb_white = 0 if self._max_white == 0 else self.np_random.integers(0, self._max_white)
         if options != None and "nb_white" in options:
             nb_white = max(0, options["nb_white"])
         nb_white = min(len(available_space), min(self._max_white, nb_white))
@@ -268,7 +389,7 @@ class NanoEnv(gym.Env):
         x1, y1 = new_location[0], new_location[1]
         r = radius
 
-        def touche_mur(x, y) -> bool:
+        def touche_mur(x, y):
             # Grid's cells potentially touched by the entity
             i0 = int(np.floor(x - r))
             i1 = int(np.floor(x + r))
@@ -330,8 +451,16 @@ class NanoEnv(gym.Env):
         delta_v = np.clip(action[0], -1.0, 1.0) * self.__action_v_limit
         delta_theta = np.clip(action[1], -1.0, 1.0) * self.__action_theta_limit
 
+        # Discourage spins and changes in orientation that are too great
+        alpha_v = 0.006
+        reward += - alpha_v * (action[0] ** 2)
         self._velocity = np.clip(self._velocity + delta_v, 0.0, self._max_v)
+
+        beta_theta = 0.001
+        theta_old = self._orientation
         self._orientation = wrap(self._orientation + delta_theta)
+        dtheta = wrap(self._orientation - theta_old)
+        reward += - beta_theta * (dtheta ** 2)
 
 
         # Compute new agent and cells continuous positions with collisions management
@@ -369,6 +498,10 @@ class NanoEnv(gym.Env):
         dafter = np.linalg.norm(self._agent_location - self._target_location)
         p = np.clip((dbefore - dafter) / self.__initial_distance, -1.0, 1.0)
         reward += 10.0 * p
+        if dafter < self._best_dist:
+            gain = (self._best_dist - dafter) / (self.__initial_distance + 1e-8)
+            reward += 3.0 * float(np.clip(gain, 0.0, 1.0)) 
+            self._best_dist = dafter
 
         # Make sure the agent doesn't stay motionless
         if p <= 0:
@@ -376,14 +509,9 @@ class NanoEnv(gym.Env):
         else:
             reward += -0.01
 
-        # Discourage spins and changes in orientation that are too great
-        alpha_v = 0.006
-        reward += - alpha_v * (action[0] ** 2)
-        alpha_theta = 0.008
-        reward += - alpha_theta * (action[1] ** 2)
-
         if np.linalg.norm(self._agent_location - self._target_location) <= self.__agent_radius + self.__target_radius:
             terminated = True
+            self._is_success = True
             reward += 100.0
         truncated = self._time > self.__timelimit
 
