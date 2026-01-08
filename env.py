@@ -81,16 +81,17 @@ class NanoEnv(gym.Env):
         self.observation_space = gym.spaces.Dict(
             {
                 # -1.0 and size will be used to reprensent element outside of the visible box
-                "agent" : gym.spaces.Box(-1.0, float(self._size), shape=(2,), dtype=np.float32),
-                "target" : gym.spaces.Box(-1.0, float(self._size), shape=(2,), dtype=np.float32),
+                "agent" : gym.spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32),
+                "target" : gym.spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32),
                 "mvt" : gym.spaces.Box(
                     low=np.array([0.0, -1.0, -1.0], dtype=np.float32), 
                     high=np.array([self._max_v, 1.0, 1.0], dtype=np.float32), 
                     shape=(3,), 
                     dtype=np.float32
                 ),
-                "red" : gym.spaces.Box(-1.0, float(self._size), shape=(2 * self._max_red,), dtype=np.float32),
-                "white" : gym.spaces.Box(-1.0, float(self._size), shape=(2 * self._max_white,), dtype=np.float32)
+                "delta_goal":gym.spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32),
+                "red" : gym.spaces.Box(-1.0, 1.0, shape=(2 * self._max_red,), dtype=np.float32),
+                "white" : gym.spaces.Box(-1.0, 1.0, shape=(2 * self._max_white,), dtype=np.float32)
             }
         )
 
@@ -111,9 +112,11 @@ class NanoEnv(gym.Env):
             dict: Observation with agent and target positions, obstacles positions and  current motion parameters
         """
 
+        normalize = lambda x : 2 * ((x + 1) / (self._size + 1)) - 1
+
         return {
-            "agent" : self._agent_location,
-            "target" : self._target_location,
+            "agent" : normalize(self._agent_location),
+            "target" : normalize(self._target_location),
             "mvt" : np.array([
                     self._velocity, 
                     np.sin(self._orientation), 
@@ -121,8 +124,9 @@ class NanoEnv(gym.Env):
                 ], 
                 dtype=np.float32
             ),
-            "red" : self._red_cells.reshape(-1),
-            "white" : self._white_cells.reshape(-1)
+            "delta_goal": (self._target_location - self._agent_location) / self._size,
+            "red" : normalize(self._red_cells.reshape(-1)),
+            "white" : normalize(self._white_cells.reshape(-1))
         }
     
     def _get_info(self):
@@ -201,8 +205,15 @@ class NanoEnv(gym.Env):
         self._agent_location = np.array(list(available_space[agent_int]), dtype=np.float32)
         available_space.pop(agent_int)
 
-        target_int = self.np_random.integers(0, len(available_space))
-        self._target_location = np.array(list(available_space[target_int]), dtype=np.float32)
+        repeter = True
+        while repeter:
+            target_int = self.np_random.integers(0, len(available_space))
+            self._target_location = np.array(list(available_space[target_int]), dtype=np.float32)
+            d0 = np.linalg.norm(self._agent_location - self._target_location)
+            if d0 >= 10:
+                repeter = False
+        
+        self.__initial_distance = d0
         available_space.pop(target_int)
 
         # Velocity and orientation at the start of an episode
@@ -210,9 +221,7 @@ class NanoEnv(gym.Env):
         self._orientation = self.np_random.uniform(-np.pi, np.pi)
 
         # Set the time limit 
-        d0 = np.linalg.norm(self._agent_location - self._target_location)
-        self.__initial_distance = d0
-        self.__timelimit = min(3 + 2 * d0, 40)
+        self.__timelimit = min(3 + 2 * self.__initial_distance, 40)
         self._time = 0.0
 
         # Random red and white cells locations in regard to the topology and the options nb_red and nb_white
@@ -341,20 +350,17 @@ class NanoEnv(gym.Env):
 
 
         # Agent-cell collision
-        beta = self.np_random.uniform(0.5, 0.8)
-        epsilon = self.np_random.uniform(-0.1, 0.1)
+        beta = 0.6
 
         for i in range(self._nb_red):
             if np.linalg.norm(self._red_cells[i] - self._agent_location) < self.__agent_radius + self.__cell_radius:
-                self._velocity -= beta
-                self._orientation += epsilon
+                self._velocity = np.clip(self._velocity - beta, 0.0, self._max_v)
                 reward += self.__penalty_red_cell
                 break
         
         for i in range(self._nb_white):
             if np.linalg.norm(self._white_cells[i] - self._agent_location) < self.__agent_radius + self.__cell_radius:
-                self._velocity -= beta + 0.1
-                self._orientation = wrap(self._orientation + epsilon)
+                self._velocity = np.clip(self._velocity - beta - 0.1, 0.0, self._max_v)
                 reward += self.__penalty_white_cell
                 break
         
@@ -362,7 +368,7 @@ class NanoEnv(gym.Env):
         dbefore = np.linalg.norm(old_agent_location - self._target_location)
         dafter = np.linalg.norm(self._agent_location - self._target_location)
         p = np.clip((dbefore - dafter) / self.__initial_distance, -1.0, 1.0)
-        reward += 3.0 * p
+        reward += 10.0 * p
 
         # Make sure the agent doesn't stay motionless
         if p <= 0:
@@ -384,12 +390,12 @@ class NanoEnv(gym.Env):
 
         # Prevent the agent from letting the fluid transport it outside the blood vessel
         if self._agent_location[0] < 0 or self._agent_location[1] < 0 or self._agent_location[0] >= self._size or self._agent_location[1] >= self._size:
-            reward += -200.0
+            reward += -50.0
             terminated = True
 
         
         if truncated:
-            reward = -50.0
+            reward += -10.0
 
         
         # Update the timer  

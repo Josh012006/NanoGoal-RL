@@ -1,10 +1,15 @@
 import env
 from stable_baselines3 import PPO
-
 import csv
+from pathlib import Path
+
+
 
 myEnv = env.NanoEnv()
 model = PPO.load("models/ppo_nanogoal", env=myEnv)
+
+
+Path("results").mkdir(parents=True, exist_ok=True)
 
 with open("results/ppo_eval.csv", "w", newline="") as f:
     writer = csv.writer(f)
@@ -12,6 +17,8 @@ with open("results/ppo_eval.csv", "w", newline="") as f:
 
     for episode in range(20):
         obs, info = myEnv.reset()
+        terminated = False
+        truncated = False
 
         total_reward = 0
         step = 0
