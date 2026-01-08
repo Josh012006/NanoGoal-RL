@@ -8,6 +8,8 @@ myEnv = env.NanoEnv()
 
 check_env(myEnv)
 
+myEnv.reset()
+
 # Define and Train the agent
 model = PPO(
     "MultiInputPolicy", 

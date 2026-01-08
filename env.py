@@ -11,7 +11,10 @@ class NanoEnv(gym.Env):
 
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 30}
 
-    def __init__(self, render_mode: str = None, max_v: float = 6.0, max_red: int = 8, max_white: int = 4):
+    def __init__(self, render_mode: str = None, frozen: bool = False, max_v: float = 6.0, max_red: int = 8, max_white: int = 4):
+
+        # If the environment is frozen, we use 100 as a seed for all the operations. Useful for learning
+        self.frozen = frozen
 
         # Discrete representation as a grid
         self._size = 125  # grid's size
@@ -81,8 +84,8 @@ class NanoEnv(gym.Env):
                 "agent" : gym.spaces.Box(-1.0, float(self._size), shape=(2,), dtype=np.float32),
                 "target" : gym.spaces.Box(-1.0, float(self._size), shape=(2,), dtype=np.float32),
                 "mvt" : gym.spaces.Box(
-                    low=np.array([0.0, -np.pi], dtype=np.float32), 
-                    high=np.array([self._max_v, np.pi], dtype=np.float32), 
+                    low=np.array([0.0, -1.0, -1.0], dtype=np.float32), 
+                    high=np.array([self._max_v, 1.0, 1.0], dtype=np.float32), 
                     shape=(2,), 
                     dtype=np.float32
                 ),
@@ -111,7 +114,13 @@ class NanoEnv(gym.Env):
         return {
             "agent" : self._agent_location,
             "target" : self._target_location,
-            "mvt" : np.array([self._velocity, self._orientation], dtype=np.float32),
+            "mvt" : np.array([
+                    self._velocity, 
+                    np.sin(self._orientation), 
+                    np.cos(self._orientation)
+                ], 
+                dtype=np.float32
+            ),
             "red" : self._red_cells.reshape(-1),
             "white" : self._white_cells.reshape(-1)
         }
@@ -173,14 +182,15 @@ class NanoEnv(gym.Env):
         """
 
         # Seed the random number generator
-        super().reset(seed=seed)
+        used_seed = seed if not self.frozen else 100
+        super().reset(seed=used_seed)
 
 
         # Generate a pseudo-random but also valid vessel topology for the episode
-        self._vessel_topology = self._generate_logical_topology(seed)
+        self._vessel_topology = self._generate_logical_topology(used_seed)
 
         available_space = main_related_component(self._vessel_topology, self._size, self._size)
-        new_seed = 1 + 0 if seed == None else seed
+        new_seed = 1 + 0 if used_seed == None else used_seed
         while len(available_space) <= 100: # making sure there is at least a related component in the generated environment
             self._vessel_topology = self._generate_logical_topology(new_seed)
             available_space = main_related_component(self._vessel_topology, self._size, self._size)
@@ -316,6 +326,7 @@ class NanoEnv(gym.Env):
 
 
         # Compute new agent and cells continuous positions with collisions management
+        old_agent_location = self._agent_location.copy()
         v_agent = np.array([self._velocity * np.cos(self._orientation), self._velocity * np.sin(self._orientation)], dtype=np.float32)
         new_agent_location = self._agent_location + (v_agent + 0.5 * self.__v_blood) * self.__timestep
         self._agent_location = self._manage_wall_collision(self._agent_location, new_agent_location, self.__agent_radius)
@@ -346,8 +357,15 @@ class NanoEnv(gym.Env):
                 self._orientation = wrap(self._orientation + epsilon)
                 reward += self.__penalty_white_cell
                 break
+        
+        # Reward for decreasing the distance between the agent and the target
+        dbefore = np.linalg.norm(old_agent_location - self._target_location)
+        dafter = np.linalg.norm(self._agent_location - self._target_location)
+        reward += dbefore - dafter / self.__initial_distance
 
-        reward += -np.linalg.norm(self._agent_location - self._target_location) / self.__initial_distance
+        # Discourage spins and changes in orientation that are too great
+        alpha_theta = 0.008
+        reward += - alpha_theta * action[1]
 
         if np.linalg.norm(self._agent_location - self._target_location) <= self.__agent_radius + self.__target_radius:
             terminated = True
