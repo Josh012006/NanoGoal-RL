@@ -203,6 +203,7 @@ class NanoEnv(gym.Env):
         d0 = np.linalg.norm(self._agent_location - self._target_location)
         self.__initial_distance = d0
         self.__timelimit = min(3 + 2 * d0, 40)
+        self._time = 0.0
 
         # Random red and white cells locations in regard to the topology and the options nb_red and nb_white
         nb_red = self.np_random.integers(0, self._max_red)
@@ -357,7 +358,6 @@ class NanoEnv(gym.Env):
         # Prevent the agent from letting the fluid transport it outside the blood vessel
         if self._agent_location[0] < 0 or self._agent_location[1] < 0 or self._agent_location[0] >= self._size or self._agent_location[1] >= self._size:
             reward += -200.0
-            truncated = True
             terminated = True
 
         
