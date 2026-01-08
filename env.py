@@ -328,7 +328,7 @@ class NanoEnv(gym.Env):
         while repeter2:
             target_int = self.np_random.integers(0, len(available_space))
             init_target_location = available_space[target_int].copy()
-            d0 = np.linalg.norm(self._agent_location - self._target_location)
+            d0 = np.linalg.norm(self._agent_location - init_target_location)
             if d0 >= 10:
                 repeter2 = False
         
