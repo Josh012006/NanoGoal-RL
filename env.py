@@ -86,7 +86,7 @@ class NanoEnv(gym.Env):
                 "mvt" : gym.spaces.Box(
                     low=np.array([0.0, -1.0, -1.0], dtype=np.float32), 
                     high=np.array([self._max_v, 1.0, 1.0], dtype=np.float32), 
-                    shape=(2,), 
+                    shape=(3,), 
                     dtype=np.float32
                 ),
                 "red" : gym.spaces.Box(-1.0, float(self._size), shape=(2 * self._max_red,), dtype=np.float32),
@@ -361,11 +361,11 @@ class NanoEnv(gym.Env):
         # Reward for decreasing the distance between the agent and the target
         dbefore = np.linalg.norm(old_agent_location - self._target_location)
         dafter = np.linalg.norm(self._agent_location - self._target_location)
-        reward += dbefore - dafter / self.__initial_distance
+        reward += (dbefore - dafter) / self.__initial_distance
 
         # Discourage spins and changes in orientation that are too great
         alpha_theta = 0.008
-        reward += - alpha_theta * action[1]
+        reward += - alpha_theta * (action[1] ** 2)
 
         if np.linalg.norm(self._agent_location - self._target_location) <= self.__agent_radius + self.__target_radius:
             terminated = True
