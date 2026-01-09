@@ -1,8 +1,5 @@
 # An example of the agent's behavior
-<video width="100%" controls>
-  <source src="public/demo.mp4" type="video/mp4">
-  Your browser does not support the video tag.
-</video>
+![Demo](public/demo.gif)
 
 # Training the model
 <p align="center">
