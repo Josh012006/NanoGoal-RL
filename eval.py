@@ -15,7 +15,7 @@ with open("results/ppo_eval.csv", "w", newline="") as f:
     writer = csv.writer(f)
     writer.writerow(["episode", "return", "length", "success", "terminated", "truncated", "init_dist_goal", "best_dist_goal", "final_dist_goal"])
 
-    for episode in range(20):
+    for episode in range(300):
         obs, info = myEnv.reset()
         terminated = False
         truncated = False
