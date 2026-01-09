@@ -17,7 +17,7 @@ model = PPO(
     verbose=1,
     tensorboard_log="./logs/"
 )
-model.learn(total_timesteps=50_000)
+model.learn(total_timesteps=800_000)
 
 # Save the trained agent
 model.save("models/ppo_nanogoal")
