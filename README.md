@@ -1,3 +1,6 @@
+# An example of the agent's behavior
+<video src="public/demo.mp4" controls width="80%"></video>
+
 # Training the model
 <p align="center">
   <img src="public/learning.png" width="800" alt="the reward mean during learning"><br>
