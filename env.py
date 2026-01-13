@@ -93,7 +93,7 @@ class NanoEnv(gym.Env):
                 "agent" : gym.spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32),
                 "mvt" : gym.spaces.Box(
                     low=np.array([0.0, -1.0, -1.0], dtype=np.float32), 
-                    high=np.array([self._max_v, 1.0, 1.0], dtype=np.float32), 
+                    high=np.array([1.0, 1.0, 1.0], dtype=np.float32), 
                     shape=(3,), 
                     dtype=np.float32
                 ),
@@ -171,7 +171,7 @@ class NanoEnv(gym.Env):
         return {
             "agent" : normalize(self._agent_location),
             "mvt" : np.array([
-                    self._velocity, 
+                    self._velocity / self._max_v, 
                     np.sin(self._orientation), 
                     np.cos(self._orientation)
                 ], 
@@ -339,7 +339,7 @@ class NanoEnv(gym.Env):
 
         # Velocity and orientation at the start of an episode
         self._velocity = 0.0
-        self._orientation = self.np_random.uniform(-np.pi, np.pi)
+        self._orientation = 0.0
 
         # Set the time limit 
         self.__timelimit = min(3 + 2 * self.__initial_distance, 40)
@@ -536,6 +536,8 @@ class NanoEnv(gym.Env):
 
         if self.render_mode == "human":
             self._render_frame()
+
+        print("orientation: ", self._orientation, "velocity: ", self._velocity)
 
         return observation, reward, terminated, truncated, info
     
