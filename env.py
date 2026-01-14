@@ -451,21 +451,24 @@ class NanoEnv(gym.Env):
         delta_v = np.clip(action[0], -1.0, 1.0) * self.__action_v_limit
         delta_theta = np.clip(action[1], -1.0, 1.0) * self.__action_theta_limit
 
+        self._velocity = np.clip(self._velocity + delta_v, 0.0, self._max_v)
+
+        theta_old = self._orientation
+        self._orientation = wrap(self._orientation + delta_theta)
+
+
         # Discourage spins and changes in orientation that are too great
         alpha_v = 0.006
         reward += - alpha_v * (action[0] ** 2)
-        self._velocity = np.clip(self._velocity + delta_v, 0.0, self._max_v)
 
         beta_theta = 0.001
-        theta_old = self._orientation
-        self._orientation = wrap(self._orientation + delta_theta)
         dtheta = wrap(self._orientation - theta_old)
         reward += - beta_theta * (dtheta ** 2)
 
 
         # Compute new agent and cells continuous positions with collisions management
         old_agent_location = self._agent_location.copy()
-        v_agent = np.array([self._velocity * np.cos(self._orientation), self._velocity * np.sin(self._orientation)], dtype=np.float32)
+        v_agent = np.array([self._velocity * np.sin(self._orientation), self._velocity * np.cos(self._orientation)], dtype=np.float32)
         new_agent_location = self._agent_location + (v_agent + 0.5 * self.__v_blood) * self.__timestep
         self._agent_location = self._manage_wall_collision(self._agent_location, new_agent_location, self.__agent_radius)
 
@@ -537,7 +540,9 @@ class NanoEnv(gym.Env):
         if self.render_mode == "human":
             self._render_frame()
 
-        print("orientation: ", self._orientation, "velocity: ", self._velocity)
+        # print("----------------------------------------------")
+        # print(self._get_obs())
+        # print("----------------------------------------------")
 
         return observation, reward, terminated, truncated, info
     
@@ -550,7 +555,8 @@ class NanoEnv(gym.Env):
     def _render_frame(self):
         """This is a function to render the environment. It represents the elements in the pygame coordinate system. So the
         center is at the top left corner, the x-axis increases as we go further to the right and the y-axis increases as we go further down.
-        Concerning the orientation, now a positive orientation rotates the element clockwise instead of counterclockwise.
+        Concerning the orientation, now a positive orientation rotates the element clockwise instead of counterclockwise to keep the logic
+        consistent with the orientation of the axes.
         """
         if self._window is None and self.render_mode == "human":
             pygame.init()
@@ -594,7 +600,7 @@ class NanoEnv(gym.Env):
             int(np.ceil(self.__target_radius * self.__pix_square_size))
         )
         # Now we draw the agent with the appropriate orientation
-        angle_deg = np.degrees(self._orientation)
+        angle_deg = -np.degrees(self._orientation)
         rotated_img = pygame.transform.rotate(self._agent_img, angle_deg)
         center = ((self._agent_location[::-1] + 0.5) * self.__pix_square_size).astype(int)
         rect = rotated_img.get_rect(center=tuple(center))
