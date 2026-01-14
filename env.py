@@ -40,7 +40,7 @@ class NanoEnv(gym.Env):
         self._max_v = max_v
 
         # The blood's velocity
-        self.__v_blood = np.array([1.4, 1.0], dtype=np.float32)
+        self.__v_blood = np.array([0.0, 0.0], dtype=np.float32)
 
         # Agent and target initial locations
         self._agent_location = np.array([-1, -1], dtype=np.float32)
@@ -548,6 +548,10 @@ class NanoEnv(gym.Env):
 
 
     def _render_frame(self):
+        """This is a function to render the environment. It represents the elements in the pygame coordinate system. So the
+        center is at the top left corner, the x-axis increases as we go further to the right and the y-axis increases as we go further down.
+        Concerning the orientation, now a positive orientation rotates the element clockwise instead of counterclockwise.
+        """
         if self._window is None and self.render_mode == "human":
             pygame.init()
             pygame.display.init()
@@ -590,7 +594,7 @@ class NanoEnv(gym.Env):
             int(np.ceil(self.__target_radius * self.__pix_square_size))
         )
         # Now we draw the agent with the appropriate orientation
-        angle_deg = -np.degrees(self._orientation)
+        angle_deg = np.degrees(self._orientation)
         rotated_img = pygame.transform.rotate(self._agent_img, angle_deg)
         center = ((self._agent_location[::-1] + 0.5) * self.__pix_square_size).astype(int)
         rect = rotated_img.get_rect(center=tuple(center))
