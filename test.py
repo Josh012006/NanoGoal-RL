@@ -2,10 +2,13 @@ import env
 import numpy as np
 from stable_baselines3 import PPO
 
+import sys
+
+
 myEnv = env.NanoEnv(render_mode="human", max_v=80.0)
 
 # Reset environment to start a new episode
-observation, info = myEnv.reset(seed=770)
+observation, info = myEnv.reset(seed=int(sys.argv[1]))
 
 print(f"Starting observation: {observation}")
 

@@ -3,7 +3,7 @@ import gymnasium as gym
 import numpy as np
 import pygame
 from noise import pnoise2
-from utils import main_related_component
+from utils import main_related_component, is_navigable
 
 from gymnasium.envs.registration import register
 
@@ -212,18 +212,18 @@ class NanoEnv(gym.Env):
         base = int(seed) if seed is not None else self.np_random.integers(25, 10000)
 
         # Add more variety
-        gamma = self.np_random.uniform(1.4, 2.5)
+        gamma = self.np_random.uniform(1.1, 1.5)
         ox, oy = self.np_random.uniform(0, 10000, size=2)
 
         for i in range(self._size):
             for j in range(self._size):
-                n1 = pnoise2((j + ox)/173, (i + oy)/173, base=base, octaves=4, persistence=0.5, lacunarity=2.0)
-                n2 = pnoise2((j + ox)/57, (i + oy)/57, base=(base + 1337), octaves=6, persistence=0.5, lacunarity=2.0)
+                n1 = pnoise2((j + ox)/153, (i + oy)/153, base=base, octaves=4, persistence=0.5, lacunarity=2.0)
+                n2 = pnoise2((j + ox)/67, (i + oy)/67, base=(base + 1337), octaves=6, persistence=0.5, lacunarity=2.0)
                 micro = 0.05 * pnoise2((j + ox) / 23, (i + oy) / 23, base=base + 999)
-                n = (((0.75 * n1 + 0.25 * n2) + 1) / 2 + micro) ** gamma
+                n = (((0.6 * n1 + 0.4 * n2) + 1) / 2 + micro) ** gamma
                 computed[i][j] = np.clip(n, 0.0, 1.0)
-
-        t = np.quantile(computed, 0.3)
+        q = self.np_random.uniform(0.36, 0.44)
+        t = np.quantile(computed, q)
         grid = (computed <= t).astype(int)
 
         return grid
@@ -333,13 +333,14 @@ class NanoEnv(gym.Env):
             target_int = self.np_random.integers(0, len(available_space))
             init_target_location = available_space[target_int].copy()
             d0 = np.linalg.norm(self._agent_location - init_target_location)
-            if d0 >= 10:
+            if d0 >= 35 and is_navigable(self._vessel_topology, self._agent_location, init_target_location, self.__agent_radius):
                 repeter2 = False
         
         self._target_location = init_target_location
         self.__initial_distance = d0
         self._best_dist = d0
         available_space.pop(target_int)
+
 
         # Velocity and orientation at the start of an episode
         self._velocity = 0.0

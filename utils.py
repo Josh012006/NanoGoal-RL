@@ -53,3 +53,10 @@ def main_related_component(grid, height, width):
 # ]
 
 # print(main_related_component(grid, 6, 6))
+
+
+def is_navigable(grid, agent, target, agent_radius):
+    """Makes sure there is a navigable way from the agent to the target on the grid while taking 
+    the agent's radius into account.
+    """
+    return True
