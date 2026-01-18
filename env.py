@@ -309,37 +309,40 @@ class NanoEnv(gym.Env):
         while repeter:
             self._vessel_topology = self._generate_logical_topology(new_seed)
 
-            available_space = main_related_component(self._vessel_topology, self._size, self._size)
+            available_space = main_related_component(self._vessel_topology)
             available_space = self._filter_by_clearance(available_space, max(self.__agent_radius, self.__target_radius))
 
             new_seed += 1
             if len(available_space) > 100:
-                repeter = False
-        
+                # Randomly generated target and agent locations in the available space
+                repeter1 = True
+                while repeter1:
+                    agent_int = self.np_random.integers(0, len(available_space))
+                    init_agent_location = available_space[agent_int].copy()
+                    if 10 <= init_agent_location[0] <= self._size - 10 and 10 <= init_agent_location[1] <= self._size - 10 :
+                        repeter1 = False
 
-        # Randomly generated target and agent locations in the available space
-        repeter1 = True
-        while repeter1:
-            agent_int = self.np_random.integers(0, len(available_space))
-            init_agent_location = available_space[agent_int].copy()
-            if 10 <= init_agent_location[0] <= self._size - 10 and 10 <= init_agent_location[1] <= self._size - 10 :
-                repeter1 = False
+                self._agent_location = init_agent_location
+                available_space.pop(agent_int)
 
-        self._agent_location = init_agent_location
-        available_space.pop(agent_int)
+                repeter2 = True
+                to_explore = available_space.copy()
+                while repeter2 and len(to_explore) != 0:
+                    target_int = self.np_random.integers(0, len(to_explore))
+                    init_target_location = to_explore[target_int].copy()
+                    d0 = np.linalg.norm(self._agent_location - init_target_location)
+                    if d0 >= 35 and is_navigable(self._vessel_topology, self._agent_location, init_target_location, self.__agent_radius):
+                        repeter2 = False
+                        self._target_location = init_target_location
+                        self.__initial_distance = d0
+                        self._best_dist = d0
+                        available_space = list(filter(lambda x: x[0] != init_target_location[0] or x[1] != init_target_location[1], available_space))
 
-        repeter2 = True
-        while repeter2:
-            target_int = self.np_random.integers(0, len(available_space))
-            init_target_location = available_space[target_int].copy()
-            d0 = np.linalg.norm(self._agent_location - init_target_location)
-            if d0 >= 35 and is_navigable(self._vessel_topology, self._agent_location, init_target_location, self.__agent_radius):
-                repeter2 = False
-        
-        self._target_location = init_target_location
-        self.__initial_distance = d0
-        self._best_dist = d0
-        available_space.pop(target_int)
+                        repeter = False
+                    else: 
+                        to_explore.pop(target_int)
+                
+                
 
 
         # Velocity and orientation at the start of an episode
