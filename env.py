@@ -16,9 +16,9 @@ class NanoEnv(gym.Env):
 
         # Introducing difficulty levels for the learning curriculum
         self.difficulty = difficulty
-        self.__easy_seeds = [0, 1, 2, 10, 11, 30, 32, 42, 49, 101, 121, 195, 205, 775, 999, 1500, 2003, 2565, 9899, 91051]
-        self.__medium_seeds = [3, 15, 64, 98, 100, 989, 1000, 1974, 2000, 2019, 723273]
-        self.__hard_seeds = [951, ]
+        self.__easy_seeds = [0, 2, 10, 11, 30, 42, 49, 101, 121, 205, 775, 951, 1500, 1974, 1976, 2003, 2008, 2013, 2017, 2033]
+        self.__medium_seeds = [3, 32, 89, 100, 195, 665, 714, 726, 1001, 1004, 1005, 2006, 2020, 2023, 2029, 2037, 7011, 9151]
+        self.__hard_seeds = [1, 265, 721, 728, 729, 989, 999, 2002, 2011, 2012, 2022, 2024, 2027, 2222, 2565, 8188] # Use 1011 too if you want to teach precision
 
         # Discrete representation as a grid
         self._size = 125  # grid's size

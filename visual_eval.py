@@ -5,7 +5,7 @@ myEnv = env.NanoEnv(render_mode="human")
 model = PPO.load("models/ppo_nanogoal", env=myEnv)
 
 # Reset environment to start a new episode
-observation, info = myEnv.reset(seed=30)
+observation, info = myEnv.reset(seed=30) # 2024 for really hardcore
 
 print(f"Starting observation: {observation}")
 
