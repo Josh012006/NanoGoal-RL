@@ -18,7 +18,7 @@ model = PPO(
     tensorboard_log="./logs/"
 )
 model.learn(
-    total_timesteps=50_000,
+    total_timesteps=150_000,
     tb_log_name="easy"
 )
 

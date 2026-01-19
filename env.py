@@ -301,7 +301,7 @@ class NanoEnv(gym.Env):
                 if draw < 0.3 else self.__hard_seeds[self.np_random.integers(0, len(self.__hard_seeds))]
             )
         else:
-            return self.np_random.integers(0, 10000)
+            return int(self.np_random.integers(0, 10000))
 
     
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
@@ -318,7 +318,8 @@ class NanoEnv(gym.Env):
         """
 
         # Seed the random number generator
-        used_seed = seed if seed else self._get_seed()
+        used_seed = seed if self.difficulty == None and seed != None else self._get_seed()
+        print(used_seed)
         super().reset(seed=used_seed)
 
         # Reset the success variable
