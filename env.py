@@ -44,7 +44,7 @@ class NanoEnv(gym.Env):
         self._max_v = max_v
 
         # The blood's velocity
-        self.__v_blood = np.array([0.0, 0.0], dtype=np.float32)
+        self.__v_blood = np.array([1.4, 1.1], dtype=np.float32)
 
         # Agent and target initial locations
         self._agent_location = np.array([-1, -1], dtype=np.float32)
@@ -282,6 +282,28 @@ class NanoEnv(gym.Env):
         return out
 
     
+    def _get_seed(self):
+        """Generates a seed for the episode depending on the difficulty level chosen"""
+
+        if self.difficulty == "easy":
+            return self.__easy_seeds[self.np_random.integers(0, len(self.__easy_seeds))]
+        elif self.difficulty == "medium":
+            return (
+                self.__easy_seeds[self.np_random.integers(0, len(self.__easy_seeds))] 
+                if (self.np_random.uniform(0, 1) < 0.2) else 
+                self.__medium_seeds[self.np_random.integers(0, len(self.__medium_seeds))]
+            )
+        elif self.difficulty == "hard":
+            draw = self.np_random.uniform(0, 1)
+            return (
+                self.__easy_seeds[self.np_random.integers(0, len(self.__easy_seeds))] 
+                if draw < 0.1 else self.__medium_seeds[self.np_random.integers(0, len(self.__medium_seeds))] 
+                if draw < 0.3 else self.__hard_seeds[self.np_random.integers(0, len(self.__hard_seeds))]
+            )
+        else:
+            return self.np_random.integers(0, 10000)
+
+    
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
         """Start a new episode.
 
@@ -296,7 +318,7 @@ class NanoEnv(gym.Env):
         """
 
         # Seed the random number generator
-        used_seed = seed # if not  else 100
+        used_seed = seed if seed else self._get_seed()
         super().reset(seed=used_seed)
 
         # Reset the success variable
