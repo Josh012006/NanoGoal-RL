@@ -1,3 +1,6 @@
+# A file just to test and observe more freely with different seeds the environment and 
+# the effect of the actions.
+
 import env
 import numpy as np
 from stable_baselines3 import PPO
