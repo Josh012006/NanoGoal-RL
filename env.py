@@ -28,7 +28,7 @@ class NanoEnv(gym.Env):
         # Learn by using increasing pools of seeds
         self._ep = 0               # episodes count
         self._pool0 = 2            # initial pool's size
-        self._expand_every = 2000  # expand the pool's size by 2 every 2000 resets
+        self._expand_every = 500 if difficulty == "easy" else 1000 if difficulty == "medium" else 2000  # expand the pool's size by 2 every 2000 resets
 
         # Discrete representation as a grid
         self._size = 125  # grid's size
@@ -354,7 +354,7 @@ class NanoEnv(gym.Env):
         self._is_success = False
 
         # TODO: Remove this print
-        print(used_seed)
+        print("episode: ", self.ep, " ,seed: ", used_seed)
 
 
         # Generate a pseudo-random but also valid vessel topology for the episode
