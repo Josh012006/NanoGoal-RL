@@ -27,7 +27,6 @@ class NanoEnv(gym.Env):
         
         # Learn by using increasing pools of seeds
         self._ep = 0               # episodes count
-        self._run_seed = None
         self._pool0 = 2            # initial pool's size
         self._expand_every = 2000  # expand the pool's size by 2 every 2000 resets
 
@@ -346,24 +345,16 @@ class NanoEnv(gym.Env):
         """
 
         # Seed the random number generator
-        if seed is not None:
-            self._run_seed = int(seed)
-        elif self._run_seed is None:
-            self._run_seed = 0
-
-        base_seed = self._get_seed() if self.difficulty is not None else (0 if seed is None else int(seed))
-
-        self._ep += 1
-
-        used_seed = (self._run_seed * 1_000_003 + base_seed * 10_007 + self._ep) % (2**31 - 1)
+        used_seed = seed if self.difficulty == None and seed != None else self._get_seed()
 
         super().reset(seed=int(used_seed))
+        self._ep += 1
 
         # Reset the success variable
         self._is_success = False
 
         # TODO: Remove this print
-        print(self._run_seed, self._ep, base_seed, used_seed)
+        print(used_seed)
 
 
         # Generate a pseudo-random but also valid vessel topology for the episode
