@@ -355,7 +355,7 @@ class NanoEnv(gym.Env):
         self._is_success = False
 
         # TODO: Remove this print
-        print("episode: ", self.ep, " ,seed: ", used_seed)
+        print("episode: ", self._ep, " ,seed: ", used_seed)
 
 
         # Generate a pseudo-random but also valid vessel topology for the episode
