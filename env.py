@@ -19,6 +19,11 @@ class NanoEnv(gym.Env):
         self.__easy_seeds = [0, 2, 10, 11, 30, 42, 49, 101, 121, 205, 775, 951, 1500, 1974, 1976, 2003, 2008, 2013, 2017, 2033]
         self.__medium_seeds = [3, 32, 89, 100, 195, 665, 714, 726, 1001, 1004, 1005, 2006, 2020, 2023, 2029, 2037, 7011, 9151]
         self.__hard_seeds = [1, 265, 721, 728, 729, 989, 999, 2002, 2011, 2012, 2022, 2024, 2027, 2222, 2565, 8188] # Use 1011 too if you want to teach precision
+
+        rng0 = np.random.default_rng(12345)
+        self._easy_perm = [self.__easy_seeds[i] for i in rng0.permutation(len(self.__easy_seeds))]
+        self._medium_perm = [self.__medium_seeds[i] for i in rng0.permutation(len(self.__medium_seeds))]
+        self._hard_perm = [self.__hard_seeds[i] for i in rng0.permutation(len(self.__hard_seeds))]
         
         # Learn by using increasing pools of seeds
         self._ep = 0               # episodes count
@@ -302,27 +307,27 @@ class NanoEnv(gym.Env):
         """Generates a seed for the episode depending on the difficulty level chosen"""
 
         # Actual sizes of the pools
-        ke = self._pool_size(len(self.__easy_seeds))
-        km = self._pool_size(len(self.__medium_seeds))
-        kh = self._pool_size(len(self.__hard_seeds))
+        ke = self._pool_size(len(self._easy_perm))
+        km = self._pool_size(len(self._medium_perm))
+        kh = self._pool_size(len(self._hard_perm))
 
         if self.difficulty == "easy":
-            return self._sample_from(self.__easy_seeds, ke)
+            return self._sample_from(self._easy_perm, ke)
 
         if self.difficulty == "medium":
             # 20% easy, 80% medium 
             if self.np_random.uniform(0.0, 1.0) < 0.2:
-                return self._sample_from(self.__easy_seeds, ke)
-            return self._sample_from(self.__medium_seeds, km)
+                return self._sample_from(self._easy_perm, ke)
+            return self._sample_from(self._medium_perm, km)
 
         if self.difficulty == "hard":
             # 10% easy, 20% medium, 70% hard
             u = self.np_random.uniform(0.0, 1.0)
             if u < 0.1:
-                return self._sample_from(self.__easy_seeds, ke)
+                return self._sample_from(self._easy_perm, ke)
             if u < 0.3:
-                return self._sample_from(self.__medium_seeds, km)
-            return self._sample_from(self.__hard_seeds, kh)
+                return self._sample_from(self._medium_perm, km)
+            return self._sample_from(self._hard_perm, kh)
 
         return int(self.np_random.integers(0, 10000))
 
@@ -341,16 +346,28 @@ class NanoEnv(gym.Env):
         """
 
         # Seed the random number generator
-        used_seed = seed if self.difficulty == None and seed != None else self._get_seed()
-        super().reset(seed=used_seed)
+        if seed is not None:
+            self._run_seed = int(seed)
+        elif self._run_seed is None:
+            self._run_seed = 0
+
+        base_seed = self._get_seed() if self.difficulty is not None else (0 if seed is None else int(seed))
+
         self._ep += 1
+
+        used_seed = (self._run_seed * 1_000_003 + base_seed * 10_007 + self._ep) % (2**31 - 1)
+
+        super().reset(seed=int(used_seed))
 
         # Reset the success variable
         self._is_success = False
 
+        # TODO: Remove this print
+        print(self._run_seed, self._ep, base_seed, used_seed)
+
 
         # Generate a pseudo-random but also valid vessel topology for the episode
-        new_seed = 1 + 0 if used_seed == None else used_seed
+        new_seed = 1 + int(used_seed)
         repeter = True
         while repeter:
             self._vessel_topology = self._generate_logical_topology(new_seed)
