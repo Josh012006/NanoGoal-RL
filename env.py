@@ -309,6 +309,7 @@ class NanoEnv(gym.Env):
         ke = self._pool_size(len(self._easy_perm))
         km = self._pool_size(len(self._medium_perm))
         kh = self._pool_size(len(self._hard_perm))
+        print("ke: ", ke, ", km: ", km, ", kh: ", kh)
 
         if self.difficulty == "easy":
             return self._sample_from(self._easy_perm, ke)
