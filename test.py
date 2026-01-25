@@ -3,7 +3,6 @@
 
 import env
 import numpy as np
-from stable_baselines3 import PPO
 
 import sys
 
