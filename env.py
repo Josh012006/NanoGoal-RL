@@ -20,10 +20,10 @@ class NanoEnv(gym.Env):
         self.__medium_seeds = [3, 32, 89, 100, 195, 665, 714, 726, 1001, 1004, 1005, 2006, 2020, 2023, 2029, 2037, 7011, 9151]
         self.__hard_seeds = [1, 265, 721, 728, 729, 989, 999, 2002, 2011, 2012, 2022, 2024, 2027, 2222, 2565, 8188] # Use 1011 too if you want to teach precision
 
-        rng0 = np.random.default_rng(12345)
-        self._easy_perm = [self.__easy_seeds[i] for i in rng0.permutation(len(self.__easy_seeds))]
-        self._medium_perm = [self.__medium_seeds[i] for i in rng0.permutation(len(self.__medium_seeds))]
-        self._hard_perm = [self.__hard_seeds[i] for i in rng0.permutation(len(self.__hard_seeds))]
+        self._episode_rng = np.random.default_rng(12345)
+        self._easy_perm = [self.__easy_seeds[i] for i in self._episode_rng.permutation(len(self.__easy_seeds))]
+        self._medium_perm = [self.__medium_seeds[i] for i in self._episode_rng.permutation(len(self.__medium_seeds))]
+        self._hard_perm = [self.__hard_seeds[i] for i in self._episode_rng.permutation(len(self.__hard_seeds))]
         
         # Learn by using increasing pools of seeds
         self._ep = 0               # episodes count
@@ -300,7 +300,7 @@ class NanoEnv(gym.Env):
     def _sample_from(self, seeds, k: int):
         # pool = k first seeds
         pool = seeds[:k]
-        return pool[self.np_random.integers(0, len(pool))]
+        return pool[self._episode_rng.integers(0, len(pool))]
 
     def _get_seed(self):
         """Generates a seed for the episode depending on the difficulty level chosen"""
@@ -316,20 +316,20 @@ class NanoEnv(gym.Env):
 
         if self.difficulty == "medium":
             # 20% easy, 80% medium 
-            if self.np_random.uniform(0.0, 1.0) < 0.2:
+            if self._episode_rng.uniform(0.0, 1.0) < 0.2:
                 return self._sample_from(self._easy_perm, ke)
             return self._sample_from(self._medium_perm, km)
 
         if self.difficulty == "hard":
             # 10% easy, 20% medium, 70% hard
-            u = self.np_random.uniform(0.0, 1.0)
+            u = self._episode_rng.uniform(0.0, 1.0)
             if u < 0.1:
                 return self._sample_from(self._easy_perm, ke)
             if u < 0.3:
                 return self._sample_from(self._medium_perm, km)
             return self._sample_from(self._hard_perm, kh)
 
-        return int(self.np_random.integers(0, 10000))
+        return int(self._episode_rng.integers(0, 10000))
 
     
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
