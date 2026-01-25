@@ -15,7 +15,8 @@ model = PPO(
     "MultiInputPolicy", 
     env=myEnv,
     verbose=1,
-    tensorboard_log="./logs/"
+    tensorboard_log="./logs/",
+    n_steps=10_000
 )
 model.learn(
     total_timesteps=12_000_000, # approximatively 20000 episodes
