@@ -134,44 +134,43 @@ It lasted **12_000_000 timesteps**. That was **12 hours** in real life. After th
 
 <br />
 
-<div align="center" style="display: flex; justify-content: center; gap: 20px;">
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="plots/easy/distances.png" width="600"
+           alt="init-best-final distances">
+      <br>
+      <u><em>The relationship between initial distance to goal, best distance during episode and final distance at the end</em></u>
+    </td>
+    <td align="center">
+      <img src="plots/easy/regret-episode.png" width="600"
+           alt="final-best">
+      <br>
+      <u><em>How often it loses progress</em></u>
+    </td>
+  </tr>
+</table>
 
-  <div>
-    <img src="plots/easy/distances.png" width="400"
-         alt="init-best-final distances">
-    <br>
-    <u><em>The relationship between initial distance to goal, best distance during episode and final distance at the end</em></u>
-  </div>
-
-  <div>
-    <img src="plots/easy/regret-episode.png" width="400"
-         alt="final-best">
-    <br>
-    <u><em>How often it loses progress</em></u>
-  </div>
-
-</div>
 
 But I knew he could do more than that. But first before going to the medium and hard modes, I wanted to make sure that there would really be some learning being done.
 So I tested **Toddler Billy** on medium and hard tests sets. I only present here the status of the reward during the tests : 
 
-<div align="center" style="display: flex; justify-content: center; gap: 20px;">
-
-  <div>
-    <img src="plots/easy/return-episode-medium.png" width="400"
-         alt="Status of reward during test on medium mode seeds">
-    <br>
-    <u><em>Status of reward during test on medium mode seeds</em></u>
-  </div>
-
-  <div>
-    <img src="plots/easy/return-episode-hard.png" width="400"
-         alt="Status of reward during test on hard mode seeds">
-    <br>
-    <u><em>Status of reward during test on hard mode seeds</em></u>
-  </div>
-
-</div>
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="plots/easy/return-episode-medium.png" width="600"
+           alt="Status of reward during test on medium mode seeds">
+      <br>
+      <u><em>Status of reward during test on medium mode seeds</em></u>
+    </td>
+    <td align="center">
+      <img src="plots/easy/return-episode-hard.png" width="600"
+           alt="Status of reward during test on hard mode seeds">
+      <br>
+      <u><em>Status of reward during test on hard mode seeds</em></u>
+    </td>
+  </tr>
+</table>
 
 <br />
 <br />
@@ -185,66 +184,61 @@ I trained the easy model for another **18_000_000 timesteps** for a total of **3
 
 <br />
 
-<div align="center" style="display: flex; justify-content: center; gap: 20px;">
-
-  <div>
-    <img src="plots/medium/return-episode-medium.png" width="400"
-         alt="Status of reward during testing episodes">
-    <br>
-    <u><em>Status of reward during testing episodes on medium mode</em></u>
-  </div>
-
-  <div>
-    <img src="plots/medium/success-episode.png" width="400"
-         alt="Success rate during episodes">
-    <br>
-    <u><em>Success rate during episodes</em></u>
-  </div>
-
-</div>
-
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="plots/medium/return-episode-medium.png" width="600"
+           alt="Status of reward during testing episodes">
+      <br>
+      <u><em>Status of reward during testing episodes on medium mode</em></u>
+    </td>
+    <td align="center">
+      <img src="plots/medium/success-episode.png" width="600"
+           alt="Success rate during episodes">
+      <br>
+      <u><em>Success rate during episodes</em></u>
+    </td>
+  </tr>
+</table>
 
 <br />
 
-<div align="center" style="display: flex; justify-content: center; gap: 20px;">
-
-  <div>
-    <img src="plots/medium/distances.png" width="400"
-         alt="init-best-final distances">
-    <br>
-    <u><em>The relationship between initial distance to goal, best distance during episode and final distance at the end</em></u>
-  </div>
-
-  <div>
-    <img src="plots/medium/regret-episode.png" width="400"
-         alt="final-best">
-    <br>
-    <u><em>How often it loses progress</em></u>
-  </div>
-
-</div>
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="plots/medium/distances.png" width="600"
+           alt="init-best-final distances">
+      <br>
+      <u><em>The relationship between initial distance to goal, best distance during episode and final distance at the end</em></u>
+    </td>
+    <td align="center">
+      <img src="plots/medium/regret-episode.png" width="600"
+           alt="final-best">
+      <br>
+      <u><em>How often it loses progress</em></u>
+    </td>
+  </tr>
+</table>
 
 
 This time I tested **Middle schooler Billy** on easy and hard tests sets too:
 
-<div align="center" style="display: flex; justify-content: center; gap: 20px;">
-
-  <div>
-    <img src="plots/medium/return-episode-easy.png" width="400"
-         alt="Status of reward during test on easy mode seeds">
-    <br>
-    <u><em>Status of reward during test on easy mode seeds</em></u>
-  </div>
-
-  <div>
-    <img src="plots/medium/return-episode-hard.png" width="400"
-         alt="Status of reward during test on hard mode seeds">
-    <br>
-    <u><em>Status of reward during test on hard mode seeds</em></u>
-  </div>
-
-</div>
-
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="plots/medium/return-episode-easy.png" width="600"
+           alt="Status of reward during test on easy mode seeds">
+      <br>
+      <u><em>Status of reward during test on easy mode seeds</em></u>
+    </td>
+    <td align="center">
+      <img src="plots/medium/return-episode-hard.png" width="600"
+           alt="Status of reward during test on hard mode seeds">
+      <br>
+      <u><em>Status of reward during test on hard mode seeds</em></u>
+    </td>
+  </tr>
+</table>
 
 <br />
 <br />
@@ -258,66 +252,61 @@ For the last one I added **48_000_000 timesteps** for a total of **78_000_000 ti
 
 <br />
 
-<div align="center" style="display: flex; justify-content: center; gap: 20px;">
-
-  <div>
-    <img src="plots/hard/return-episode-hard.png" width="400"
-         alt="Status of reward during testing episodes">
-    <br>
-    <u><em>Status of reward during testing episodes on hard mode</em></u>
-  </div>
-
-  <div>
-    <img src="plots/hard/success-episode.png" width="400"
-         alt="Success rate during episodes">
-    <br>
-    <u><em>Success rate during episodes</em></u>
-  </div>
-
-</div>
-
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="plots/hard/return-episode-hard.png" width="600"
+           alt="Status of reward during testing episodes">
+      <br>
+      <u><em>Status of reward during testing episodes on hard mode</em></u>
+    </td>
+    <td align="center">
+      <img src="plots/hard/success-episode.png" width="600"
+           alt="Success rate during episodes">
+      <br>
+      <u><em>Success rate during episodes</em></u>
+    </td>
+  </tr>
+</table>
 
 <br />
 
-<div align="center" style="display: flex; justify-content: center; gap: 20px;">
-
-  <div>
-    <img src="plots/hard/distances.png" width="400"
-         alt="init-best-final distances">
-    <br>
-    <u><em>The relationship between initial distance to goal, best distance during episode and final distance at the end</em></u>
-  </div>
-
-  <div>
-    <img src="plots/hard/regret-episode.png" width="400"
-         alt="final-best">
-    <br>
-    <u><em>How often it loses progress</em></u>
-  </div>
-
-</div>
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="plots/hard/distances.png" width="600"
+           alt="init-best-final distances">
+      <br>
+      <u><em>The relationship between initial distance to goal, best distance during episode and final distance at the end</em></u>
+    </td>
+    <td align="center">
+      <img src="plots/hard/regret-episode.png" width="600"
+           alt="final-best">
+      <br>
+      <u><em>How often it loses progress</em></u>
+    </td>
+  </tr>
+</table>
 
 
 Lastly, I tested **High schooler Billy** on easy and medium tests sets too to make sure he didn't forget all he previously learned:
 
-<div align="center" style="display: flex; justify-content: center; gap: 20px;">
-
-  <div>
-    <img src="plots/hard/return-episode-easy.png" width="400"
-         alt="Status of reward during test on easy mode seeds">
-    <br>
-    <u><em>Status of reward during test on easy mode seeds</em></u>
-  </div>
-
-  <div>
-    <img src="plots/hard/return-episode-medium.png" width="400"
-         alt="Status of reward during test on medium mode seeds">
-    <br>
-    <u><em>Status of reward during test on medium mode seeds</em></u>
-  </div>
-
-</div>
-
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="plots/hard/return-episode-easy.png" width="600"
+           alt="Status of reward during test on easy mode seeds">
+      <br>
+      <u><em>Status of reward during test on easy mode seeds</em></u>
+    </td>
+    <td align="center">
+      <img src="plots/hard/return-episode-medium.png" width="600"
+           alt="Status of reward during test on medium mode seeds">
+      <br>
+      <u><em>Status of reward during test on medium mode seeds</em></u>
+    </td>
+  </tr>
+</table>
 
 
 ## Installation
