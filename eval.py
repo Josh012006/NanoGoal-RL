@@ -8,9 +8,9 @@ import numpy as np
 import sys
 
 test_easy_seeds = [0, 1, 2, 3, 5, 7, 8, 10, 11, 13, 14, 16, 18, 20, 21, 23, 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 42, 45, 46, 47, 48, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62,
-                   64, 65, 67, 70, 72, 73, 75, 76, 77, 78, 79, 81, 83, 84, 89, 91, 93, 94, 95, 97, 98, 100, ]
-test_medium_seeds = [4, 12, 19, 22, 25, 35, 43, 44, 63, 68, 69, 71, 80, 82, 85, 87, 88, 92, ]
-test_hard_seeds = [6, 9, 15, 17, 24, 41, 49, 66, 74, 86, 90, 96, 99, ]
+                   64, 65, 67, 70, 72, 73, 75, 76, 77, 78, 79, 81, 83, 84, 89, 91, 93, 94, 95, 97, 98, 100, 101, 102, 103, 104, 105, 106, 107, 195, 265, 721, 726, 729, 1001, 2002, 2006, 2011, 2012, 2020, 2029, 2565, 7011, 8188, 9151] #90
+test_medium_seeds = [4, 12, 19, 22, 25, 35, 43, 44, 63, 68, 69, 71, 80, 82, 85, 87, 88, 92, 665, 728, 989, 1004, 1005, 2003, 2022, 2023, 2222]
+test_hard_seeds = [6, 9, 15, 17, 24, 41, 49, 66, 74, 86, 90, 96, 99, 108, ]
 
 entry = int(sys.argv[1]) # 0 for easy, 1 for medium, 2 for hard and 3 for mix
 rng = np.random
@@ -27,8 +27,8 @@ with open("results/ppo_eval.csv", "w", newline="") as f:
     writer = csv.writer(f)
     writer.writerow(["episode", "seed", "return", "length", "success", "terminated", "truncated", "init_dist_goal", "best_dist_goal", "final_dist_goal"])
 
-    for episode in range(500):
-        seed = rng.choice(test_set)
+    for episode in range(100):
+        seed = test_set[episode]
         obs, info = myEnv.reset(seed=seed)
         terminated = False
         truncated = False

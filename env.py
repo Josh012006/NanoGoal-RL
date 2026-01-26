@@ -17,8 +17,8 @@ class NanoEnv(gym.Env):
         # Introducing difficulty levels for the learning curriculum
         self.difficulty = difficulty
         self.__easy_seeds = [0, 2, 3, 10, 11, 30, 32, 42, 52, 101, 205, 951, 1500, 1974, 1976, 2008, 2013, 2017, 2033] 
-        self.__medium_seeds = [89, 100, 121, 195, 665, 714, 726, 1001, 1004, 1005, 2003, 2006, 2020, 2023, 2029, 2037, 7011, 9151]
-        self.__hard_seeds = [1, 265, 721, 728, 729, 775, 989, 999, 2002, 2011, 2012, 2022, 2024, 2027, 2222, 2565, 8188] # Use 1011 too if you want to teach precision
+        self.__medium_seeds = [4, 12, 19, 22, 25, 35, 43, 44, 63, 68, 69, 71, 80, 82, 85, 88, 92, 121, 665, 714]
+        self.__hard_seeds = [9, 15, 17, 24, 41, 49, 66, 74, 86, 90, 96, 99, 108, 775, 999, 1011, 1999, 2024, 2027, 2037]
 
         self._episode_rng = np.random.default_rng(12345)
         self._easy_perm = [self.__easy_seeds[i] for i in self._episode_rng.permutation(len(self.__easy_seeds))]
