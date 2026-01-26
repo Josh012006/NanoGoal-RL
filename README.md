@@ -176,7 +176,7 @@ So I tested **Toddler Billy** on medium and hard tests sets. I only present here
 <br />
 
 ### Medium mode training
-I trained the easy model for another**30_000_000 timesteps**. It lasted **hours in real life**. Here were the statistics : 
+I trained the easy model for another **30_000_000 timesteps**. It lasted ** hours in real life**. Here were the statistics : 
 <p align="center">
   <img src="public/learning_medium.png" width="800" alt="the reward mean during learning"><br>
   <u><em>Evolution of reward during learning episodes</em></u>
