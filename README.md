@@ -106,7 +106,7 @@ to the way the algorithm was infering the policy.
 When all the changes were done, I started training the model.
 
 ### Easy mode training
-It lasted **12_000_000 timesteps**. That was **14 hours** in real life. After that stage, **Billy** was able to succeed for almost all the easy worlds of the test set. I was really proud of him. Here were the statistics : 
+It lasted **12_000_000 timesteps**. That was **12 hours** in real life. After that stage, **Billy** was able to succeed for almost all the easy worlds of the test set. I was really proud of him. Here were the statistics : 
 <p align="center">
   <img src="public/learning_easy.png" width="800" alt="the reward mean during learning"><br>
   <u><em>Evolution of reward during learning episodes</em></u>
@@ -114,23 +114,22 @@ It lasted **12_000_000 timesteps**. That was **14 hours** in real life. After th
 
 <br />
 
-<div align="center" style="display: flex; justify-content: center; gap: 20px;">
-
-  <div>
-    <img src="plots/easy/return-episode-easy.png" width="600"
-         alt="Status of reward during testing episodes">
-    <br>
-    <u><em>Status of reward during testing episodes on easy mode</em></u>
-  </div>
-
-  <div>
-    <img src="plots/easy/success-episode.png" width="600"
-         alt="Success rate during episodes">
-    <br>
-    <u><em>Success rate during episodes</em></u>
-  </div>
-
-</div>
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="plots/easy/return-episode-easy.png" width="600"
+           alt="Status of reward during testing episodes">
+      <br>
+      <u><em>Status of reward during testing episodes on easy mode</em></u>
+    </td>
+    <td align="center">
+      <img src="plots/easy/success-episode.png" width="600"
+           alt="Success rate during episodes">
+      <br>
+      <u><em>Success rate during episodes</em></u>
+    </td>
+  </tr>
+</table>
 
 
 <br />
