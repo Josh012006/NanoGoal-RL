@@ -19,10 +19,15 @@ test_hard_seeds = [6, 9, 15, 17, 24, 41, 49, 66, 74, 86, 90, 96, 99, 108, 109, 1
                    275, 280, 281, 288, 289, 306, 312, 315, 332, 341, 342, 344, 345, 349, 350, 367, 372, 374, 382, 384, 385, 386, 394, 406, 407, 418, 424, 432, 433, 436, 448, 455, 456, 496, 506, 508, 522, 
                    530, 538, 546, 563, 564, 580, 584, 625, 641, 642, 643, 652, 661, 663, 671, 676, 705, 707, 709, 710, 711, 717, 718]
 
-entry = int(sys.argv[1]) # 0 for easy, 1 for medium, 2 for hard and 3 for mix
+
+
+model_difficulty = int(sys.argv[1]) # 0 for easy, 1 for medium and 2 for hard
+difficulty_mode = int(sys.argv[2]) # 0 for easy, 1 for medium, 2 for hard and 3 for mix
+
+
 rng = np.random
-test_set = rng.permutation(test_easy_seeds if entry == 0 else test_medium_seeds if entry == 1 else test_hard_seeds if entry == 2 else test_easy_seeds + test_medium_seeds + test_hard_seeds)
-difficulty = "easy" if entry == 0 else "medium" if entry == 1 else "hard"
+test_set = rng.permutation(test_easy_seeds if difficulty_mode == 0 else test_medium_seeds if difficulty_mode == 1 else test_hard_seeds if difficulty_mode == 2 else (test_easy_seeds + test_medium_seeds + test_hard_seeds))
+difficulty = "easy" if model_difficulty == 0 else "medium" if model_difficulty == 1 else "hard"
 
 myEnv = env.NanoEnv()
 model = PPO.load("models/ppo_nanogoal_" + difficulty, env=myEnv)
@@ -30,7 +35,9 @@ model = PPO.load("models/ppo_nanogoal_" + difficulty, env=myEnv)
 
 Path("results").mkdir(parents=True, exist_ok=True)
 
-with open("results/ppo_eval.csv", "w", newline="") as f:
+folder = difficulty
+termination = "easy" if difficulty_mode == 0 else "medium" if difficulty_mode == 1 else "hard" if difficulty_mode == 2 else "mix"
+with open("results/" + folder + "/ppo_eval_" + termination + ".csv", "w", newline="") as f:
     writer = csv.writer(f)
     writer.writerow(["episode", "seed", "return", "length", "success", "terminated", "truncated", "init_dist_goal", "best_dist_goal", "final_dist_goal"])
 

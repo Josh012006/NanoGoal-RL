@@ -1,8 +1,11 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import sys
 
-CSV_PATH = "results/ppo_eval.csv"
+CSV_PATH = sys.argv[1]
+if(CSV_PATH == None): 
+    raise ValueError("File path needed !")
 ROLL = 50                    
 EPS = 1e-8
 
