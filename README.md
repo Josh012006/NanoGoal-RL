@@ -117,14 +117,14 @@ It lasted **12_000_000 timesteps**. That was **14 hours** in real life. After th
 <div align="center" style="display: flex; justify-content: center; gap: 20px;">
 
   <div>
-    <img src="plots/easy/return-episode-easy.png" width="400"
+    <img src="plots/easy/return-episode-easy.png" width="300"
          alt="Status of reward during testing episodes">
     <br>
     <u><em>Status of reward during testing episodes on easy mode</em></u>
   </div>
 
   <div>
-    <img src="plots/easy/success-episode.png" width="400"
+    <img src="plots/easy/success-episode.png" width="300"
          alt="Success rate during episodes">
     <br>
     <u><em>Success rate during episodes</em></u>
