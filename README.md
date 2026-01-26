@@ -155,7 +155,7 @@ So I tested **Toddler Billy** on medium and hard tests sets. I only present here
 <br />
 
 ### Medium mode training
-It lasted **30_000_000 timesteps**. That was ** hours** in real life. Here were the statistics : 
+I trained the easy model for another **18_000_000 timesteps** for a total of **30_000_000 timesteps** Here were the statistics : 
 <p align="center">
   <img src="public/learning_medium.png" width="800" alt="the reward mean during learning"><br>
   <u><em>Evolution of reward during learning episodes</em></u>
@@ -203,7 +203,7 @@ This time I tested **Middle schooler Billy** on easy and hard tests sets too:
 <br />
 
 ### Hard mode training
-It lasted **78_000_000 timesteps**. That was ** hours** in real life. Here were the statistics : 
+For the last one I added **48_000_000 timesteps** for a total of **78_000_000 timesteps**. That was ** hours** in real life. Here were the statistics : 
 <p align="center">
   <img src="public/learning_hard.png" width="800" alt="the reward mean during learning"><br>
   <u><em>Evolution of reward during learning episodes</em></u>
@@ -281,19 +281,19 @@ python train_hard.py
 Vizualize the learning statistics for easy mode:
 
 ```bash
-python -m tensorboard.main --logdir logs/easy_1
+python -m tensorboard.main --logdir logs/<easy_logs_folder>
 ```
 
 Vizualize the learning statistics for medium mode:
 
 ```bash
-python -m tensorboard.main --logdir logs/medium_1
+python -m tensorboard.main --logdir logs/<medium_logs_folder>
 ```
 
 Vizualize the learning statistics for hard mode:
 
 ```bash
-python -m tensorboard.main --logdir logs/hard_1
+python -m tensorboard.main --logdir logs/<hard_logs_folder>
 ```
 
 <br />
