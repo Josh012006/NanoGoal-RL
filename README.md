@@ -174,7 +174,7 @@ So I tested **Toddler Billy** on medium and hard tests sets. I only present here
   </tr>
   <tr>
     <td align="center" colspan="2">
-      <img src="plots/easy/success-episode-medium.png" width="600"
+      <img src="plots/easy/success-episode-medium.png" width="450"
            alt="Success rate during episodes">
       <br>
       <u><em>Success rate during episodes</em></u>
