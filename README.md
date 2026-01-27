@@ -103,10 +103,11 @@ to the way the algorithm was infering the policy.
 
 ## The results of the training (see `eval.py` for the evaluation code)
 
-When all the changes were done, I started training the model.
+When all the changes were done, I started training the model. After each training I plotted some interesting relationships between the results parameters. I want to mention that on the plots, **I truncated some extreme values** that were creating noise 
+and preventing me from actually understanding and assessing the model's quality.
 
 ### Easy mode training
-It lasted **12_000_000 timesteps**. That was **12 hours** in real life. After that stage, **Billy** was able to succeed for almost all the easy worlds of the test set. I was really proud of him. Here were the statistics : 
+It lasted **12_000_000 timesteps**. That was **10 hours** in real life. After that stage, **Billy** was able to succeed for almost all the easy worlds of the test set. I was really proud of him. Here were the statistics : 
 <p align="center">
   <img src="public/learning_easy.png" width="800" alt="the reward mean during learning"><br>
   <u><em>Evolution of reward during learning episodes</em></u>
@@ -137,7 +138,7 @@ It lasted **12_000_000 timesteps**. That was **12 hours** in real life. After th
 <table align="center">
   <tr>
     <td align="center">
-      <img src="plots/easy/distances.png" width="600"
+      <img src="plots/easy/distances-easy.png" width="600"
            alt="init-best-final distances">
       <br>
       <u><em>The relationship between initial distance to goal, best distance during episode and final distance at the end</em></u>
@@ -164,10 +165,27 @@ So I tested **Toddler Billy** on medium and hard tests sets. I only present here
       <u><em>Status of reward during test on medium mode seeds</em></u>
     </td>
     <td align="center">
+      <img src="plots/easy/distances-medium.png" width="600"
+           alt="init-best-final distances">
+      <br>
+      <u><em>The relationship between initial distance to goal, best distance during episode and final distance at the end</em></u>
+    </td>
+  </tr>
+</table>
+
+<table align="center">
+  <tr>
+    <td align="center">
       <img src="plots/easy/return-episode-hard.png" width="600"
            alt="Status of reward during test on hard mode seeds">
       <br>
       <u><em>Status of reward during test on hard mode seeds</em></u>
+    </td>
+    <td align="center">
+      <img src="plots/easy/distances-hard.png" width="600"
+           alt="init-best-final distances">
+      <br>
+      <u><em>The relationship between initial distance to goal, best distance during episode and final distance at the end</em></u>
     </td>
   </tr>
 </table>
@@ -176,7 +194,7 @@ So I tested **Toddler Billy** on medium and hard tests sets. I only present here
 <br />
 
 ### Medium mode training
-I trained the easy model for another **30_000_000 timesteps**. It lasted ** hours in real life**. Here were the statistics : 
+I trained the easy model for another **30_000_000 timesteps**. It lasted **18 hours** in real life. Here were the statistics : 
 <p align="center">
   <img src="public/learning_medium.png" width="800" alt="the reward mean during learning"><br>
   <u><em>Evolution of reward during learning episodes</em></u>
@@ -206,7 +224,7 @@ I trained the easy model for another **30_000_000 timesteps**. It lasted ** hour
 <table align="center">
   <tr>
     <td align="center">
-      <img src="plots/medium/distances.png" width="600"
+      <img src="plots/medium/distances-medium.png" width="600"
            alt="init-best-final distances">
       <br>
       <u><em>The relationship between initial distance to goal, best distance during episode and final distance at the end</em></u>
@@ -221,7 +239,7 @@ I trained the easy model for another **30_000_000 timesteps**. It lasted ** hour
 </table>
 
 
-This time I tested **Middle schooler Billy** on easy and hard tests sets too:
+This time I tested **Middle schooler Billy** on easy and hard tests sets too. We can clearly see more precision on the easy mode and even a somewhat satisfying performance on hard levels. But it still needs some improvements for teh hard level. And that's what we are doing next.
 
 <table align="center">
   <tr>
@@ -232,10 +250,27 @@ This time I tested **Middle schooler Billy** on easy and hard tests sets too:
       <u><em>Status of reward during test on easy mode seeds</em></u>
     </td>
     <td align="center">
+      <img src="plots/medium/distances-easy.png" width="600"
+           alt="init-best-final distances">
+      <br>
+      <u><em>The relationship between initial distance to goal, best distance during episode and final distance at the end</em></u>
+    </td>
+  </tr>
+</table>
+
+<table align="center">
+  <tr>
+    <td align="center">
       <img src="plots/medium/return-episode-hard.png" width="600"
            alt="Status of reward during test on hard mode seeds">
       <br>
       <u><em>Status of reward during test on hard mode seeds</em></u>
+    </td>
+    <td align="center">
+      <img src="plots/medium/distances-hard.png" width="600"
+           alt="init-best-final distances">
+      <br>
+      <u><em>The relationship between initial distance to goal, best distance during episode and final distance at the end</em></u>
     </td>
   </tr>
 </table>
@@ -274,7 +309,7 @@ For the last one I added **78_000_000 timesteps**. That was ** hours** in real l
 <table align="center">
   <tr>
     <td align="center">
-      <img src="plots/hard/distances.png" width="600"
+      <img src="plots/hard/distances-hard.png" width="600"
            alt="init-best-final distances">
       <br>
       <u><em>The relationship between initial distance to goal, best distance during episode and final distance at the end</em></u>
@@ -300,10 +335,27 @@ Lastly, I tested **High schooler Billy** on easy and medium tests sets too to ma
       <u><em>Status of reward during test on easy mode seeds</em></u>
     </td>
     <td align="center">
+      <img src="plots/hard/distances-easy.png" width="600"
+           alt="init-best-final distances">
+      <br>
+      <u><em>The relationship between initial distance to goal, best distance during episode and final distance at the end</em></u>
+    </td>
+  </tr>
+</table>
+
+<table align="center">
+  <tr>
+    <td align="center">
       <img src="plots/hard/return-episode-medium.png" width="600"
            alt="Status of reward during test on medium mode seeds">
       <br>
       <u><em>Status of reward during test on medium mode seeds</em></u>
+    </td>
+    <td align="center">
+      <img src="plots/hard/distances-medium.png" width="600"
+           alt="init-best-final distances">
+      <br>
+      <u><em>The relationship between initial distance to goal, best distance during episode and final distance at the end</em></u>
     </td>
   </tr>
 </table>
