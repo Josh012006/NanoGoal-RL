@@ -417,7 +417,7 @@ Lastly, I tested **High schooler Billy** on easy and medium tests sets too to ma
   </tr>
   <tr>
     <td align="center" colspan="2">
-      <img src="plots/hard/success-episode-medium.png" width="600"
+      <img src="plots/hard/success-episode-medium.png" width="450"
            alt="Success rate during episodes">
       <br>
       <u><em>Success rate during episodes</em></u>
