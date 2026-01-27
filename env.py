@@ -1,20 +1,34 @@
-from typing import Optional
+from typing import Optional, Literal
 import gymnasium as gym
 import numpy as np
 import pygame
 from noise import pnoise2
-from utils import main_related_component
+from utils import main_related_component, is_navigable
 
 from gymnasium.envs.registration import register
 
 class NanoEnv(gym.Env):
 
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 30}
+    Difficulty = Literal["easy", "medium", "hard"]
 
-    def __init__(self, render_mode: str = None, frozen: bool = False, max_v: float = 6.0, max_red: int = 8, max_white: int = 4):
+    def __init__(self, render_mode: str = None, difficulty: Optional[Difficulty] = None, max_v: float = 6.0, max_red: int = 8, max_white: int = 4):
 
-        # If the environment is frozen, we use 100 as a seed for all the operations. Useful for learning
-        self.frozen = frozen
+        # Introducing difficulty levels for the learning curriculum
+        self.difficulty = difficulty
+        self.__easy_seeds = [0, 2, 3, 10, 11, 30, 32, 42, 52, 88, 101, 205, 951, 1500, 1974, 1976, 2008, 2013, 2017, 2033] 
+        self.__medium_seeds = [4, 35, 69, 82, 88, 92, 149, 167, 245, 252, 287, 301, 319, 328, 339, 728, 989, 1004, 2003, 2022]
+        self.__hard_seeds = [9, 24, 49, 66, 74, 111, 155, 185, 193, 271, 280, 315, 342, 406, 418, 530, 584, 641, 707, 709]
+
+        self._episode_rng = np.random.default_rng(12345)
+        self._easy_perm = [self.__easy_seeds[i] for i in self._episode_rng.permutation(len(self.__easy_seeds))]
+        self._medium_perm = [self.__medium_seeds[i] for i in self._episode_rng.permutation(len(self.__medium_seeds))]
+        self._hard_perm = [self.__hard_seeds[i] for i in self._episode_rng.permutation(len(self.__hard_seeds))]
+        
+        # Learn by using increasing pools of seeds
+        self._ep = 0               # episodes count
+        self._pool0 = 2            # initial pool's size
+        self._expand_every = 2000  # expand the pool's size by 2 every 2000 resets
 
         # Discrete representation as a grid
         self._size = 125  # grid's size
@@ -40,7 +54,7 @@ class NanoEnv(gym.Env):
         self._max_v = max_v
 
         # The blood's velocity
-        self.__v_blood = np.array([1.4, 1.0], dtype=np.float32)
+        self.__v_blood = np.array([1.4, 1.1], dtype=np.float32)
 
         # Agent and target initial locations
         self._agent_location = np.array([-1, -1], dtype=np.float32)
@@ -93,7 +107,7 @@ class NanoEnv(gym.Env):
                 "agent" : gym.spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32),
                 "mvt" : gym.spaces.Box(
                     low=np.array([0.0, -1.0, -1.0], dtype=np.float32), 
-                    high=np.array([self._max_v, 1.0, 1.0], dtype=np.float32), 
+                    high=np.array([1.0, 1.0, 1.0], dtype=np.float32), 
                     shape=(3,), 
                     dtype=np.float32
                 ),
@@ -171,7 +185,7 @@ class NanoEnv(gym.Env):
         return {
             "agent" : normalize(self._agent_location),
             "mvt" : np.array([
-                    self._velocity, 
+                    self._velocity / self._max_v, 
                     np.sin(self._orientation), 
                     np.cos(self._orientation)
                 ], 
@@ -208,18 +222,18 @@ class NanoEnv(gym.Env):
         base = int(seed) if seed is not None else self.np_random.integers(25, 10000)
 
         # Add more variety
-        gamma = self.np_random.uniform(1.4, 2.5)
+        gamma = self.np_random.uniform(1.1, 1.5)
         ox, oy = self.np_random.uniform(0, 10000, size=2)
 
         for i in range(self._size):
             for j in range(self._size):
-                n1 = pnoise2((j + ox)/173, (i + oy)/173, base=base, octaves=4, persistence=0.5, lacunarity=2.0)
-                n2 = pnoise2((j + ox)/57, (i + oy)/57, base=(base + 1337), octaves=6, persistence=0.5, lacunarity=2.0)
+                n1 = pnoise2((j + ox)/153, (i + oy)/153, base=base, octaves=4, persistence=0.5, lacunarity=2.0)
+                n2 = pnoise2((j + ox)/67, (i + oy)/67, base=(base + 1337), octaves=6, persistence=0.5, lacunarity=2.0)
                 micro = 0.05 * pnoise2((j + ox) / 23, (i + oy) / 23, base=base + 999)
-                n = (((0.75 * n1 + 0.25 * n2) + 1) / 2 + micro) ** gamma
+                n = (((0.6 * n1 + 0.4 * n2) + 1) / 2 + micro) ** gamma
                 computed[i][j] = np.clip(n, 0.0, 1.0)
-
-        t = np.quantile(computed, 0.3)
+        q = self.np_random.uniform(0.36, 0.44)
+        t = np.quantile(computed, q)
         grid = (computed <= t).astype(int)
 
         return grid
@@ -277,6 +291,46 @@ class NanoEnv(gym.Env):
                 out.append(p)
         return out
 
+
+    def _pool_size(self, max_len: int):
+        steps = self._ep // self._expand_every
+        k = self._pool0 * (2 ** steps)
+        return int(min(max_len, max(1, k)))
+    
+    def _sample_from(self, seeds, k: int):
+        # pool = k first seeds
+        pool = seeds[:k]
+        return pool[self._episode_rng.integers(0, len(pool))]
+
+    def _get_seed(self):
+        """Generates a seed for the episode depending on the difficulty level chosen"""
+
+        # Actual sizes of the pools
+        ke = self._pool_size(len(self._easy_perm))
+        km = self._pool_size(len(self._medium_perm))
+        kh = self._pool_size(len(self._hard_perm))
+        print("ke: ", ke, ", km: ", km, ", kh: ", kh)
+
+        if self.difficulty == "easy":
+            return self._sample_from(self._easy_perm, ke)
+
+        if self.difficulty == "medium":
+            # 20% easy, 80% medium 
+            if self._episode_rng.uniform(0.0, 1.0) < 0.2:
+                return self._sample_from(self._easy_perm, ke)
+            return self._sample_from(self._medium_perm, km)
+
+        if self.difficulty == "hard":
+            # 10% easy, 20% medium, 70% hard
+            u = self._episode_rng.uniform(0.0, 1.0)
+            if u < 0.1:
+                return self._sample_from(self._easy_perm, ke)
+            if u < 0.3:
+                return self._sample_from(self._medium_perm, km)
+            return self._sample_from(self._hard_perm, kh)
+
+        return int(self._episode_rng.integers(0, 10000))
+
     
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
         """Start a new episode.
@@ -292,54 +346,63 @@ class NanoEnv(gym.Env):
         """
 
         # Seed the random number generator
-        used_seed = seed if not self.frozen else 100
-        super().reset(seed=used_seed)
+        used_seed = seed if self.difficulty == None and seed != None else self._get_seed()
+
+        super().reset(seed=int(used_seed))
+        self._ep += 1
 
         # Reset the success variable
         self._is_success = False
 
+        # TODO: Remove this print
+        print("episode: ", self._ep, " ,seed: ", used_seed)
+
 
         # Generate a pseudo-random but also valid vessel topology for the episode
-        new_seed = 1 + 0 if used_seed == None else used_seed
+        new_seed = 1 + int(used_seed)
         repeter = True
         while repeter:
             self._vessel_topology = self._generate_logical_topology(new_seed)
 
-            available_space = main_related_component(self._vessel_topology, self._size, self._size)
+            available_space = main_related_component(self._vessel_topology)
             available_space = self._filter_by_clearance(available_space, max(self.__agent_radius, self.__target_radius))
 
             new_seed += 1
             if len(available_space) > 100:
-                repeter = False
-        
+                # Randomly generated target and agent locations in the available space
+                repeter1 = True
+                while repeter1:
+                    agent_int = self.np_random.integers(0, len(available_space))
+                    init_agent_location = available_space[agent_int].copy()
+                    if 10 <= init_agent_location[0] <= self._size - 10 and 10 <= init_agent_location[1] <= self._size - 10 :
+                        repeter1 = False
 
-        # Randomly generated target and agent locations in the available space
-        repeter1 = True
-        while repeter1:
-            agent_int = self.np_random.integers(0, len(available_space))
-            init_agent_location = available_space[agent_int].copy()
-            if 10 <= init_agent_location[0] <= self._size - 10 and 10 <= init_agent_location[1] <= self._size - 10 :
-                repeter1 = False
+                self._agent_location = init_agent_location
+                available_space.pop(agent_int)
 
-        self._agent_location = init_agent_location
-        available_space.pop(agent_int)
+                repeter2 = True
+                to_explore = available_space.copy()
+                while repeter2 and len(to_explore) != 0:
+                    target_int = self.np_random.integers(0, len(to_explore))
+                    init_target_location = to_explore[target_int].copy()
+                    d0 = np.linalg.norm(self._agent_location - init_target_location)
+                    if d0 >= 35 and is_navigable(self._vessel_topology, self._agent_location, init_target_location, self.__agent_radius):
+                        repeter2 = False
+                        self._target_location = init_target_location
+                        self.__initial_distance = d0
+                        self._best_dist = d0
+                        available_space = list(filter(lambda x: x[0] != init_target_location[0] or x[1] != init_target_location[1], available_space))
 
-        repeter2 = True
-        while repeter2:
-            target_int = self.np_random.integers(0, len(available_space))
-            init_target_location = available_space[target_int].copy()
-            d0 = np.linalg.norm(self._agent_location - init_target_location)
-            if d0 >= 10:
-                repeter2 = False
-        
-        self._target_location = init_target_location
-        self.__initial_distance = d0
-        self._best_dist = d0
-        available_space.pop(target_int)
+                        repeter = False
+                    else: 
+                        to_explore.pop(target_int)
+                
+                
+
 
         # Velocity and orientation at the start of an episode
         self._velocity = 0.0
-        self._orientation = self.np_random.uniform(-np.pi, np.pi)
+        self._orientation = 0.0
 
         # Set the time limit 
         self.__timelimit = min(3 + 2 * self.__initial_distance, 40)
@@ -451,21 +514,24 @@ class NanoEnv(gym.Env):
         delta_v = np.clip(action[0], -1.0, 1.0) * self.__action_v_limit
         delta_theta = np.clip(action[1], -1.0, 1.0) * self.__action_theta_limit
 
+        self._velocity = np.clip(self._velocity + delta_v, 0.0, self._max_v)
+
+        theta_old = self._orientation
+        self._orientation = wrap(self._orientation + delta_theta)
+
+
         # Discourage spins and changes in orientation that are too great
         alpha_v = 0.006
         reward += - alpha_v * (action[0] ** 2)
-        self._velocity = np.clip(self._velocity + delta_v, 0.0, self._max_v)
 
         beta_theta = 0.001
-        theta_old = self._orientation
-        self._orientation = wrap(self._orientation + delta_theta)
         dtheta = wrap(self._orientation - theta_old)
         reward += - beta_theta * (dtheta ** 2)
 
 
         # Compute new agent and cells continuous positions with collisions management
         old_agent_location = self._agent_location.copy()
-        v_agent = np.array([self._velocity * np.cos(self._orientation), self._velocity * np.sin(self._orientation)], dtype=np.float32)
+        v_agent = np.array([self._velocity * np.sin(self._orientation), self._velocity * np.cos(self._orientation)], dtype=np.float32)
         new_agent_location = self._agent_location + (v_agent + 0.5 * self.__v_blood) * self.__timestep
         self._agent_location = self._manage_wall_collision(self._agent_location, new_agent_location, self.__agent_radius)
 
@@ -546,6 +612,11 @@ class NanoEnv(gym.Env):
 
 
     def _render_frame(self):
+        """This is a function to render the environment. It represents the elements in the pygame coordinate system. So the
+        center is at the top left corner, the x-axis increases as we go further to the right and the y-axis increases as we go further down.
+        Concerning the orientation, now a positive orientation rotates the element clockwise instead of counterclockwise to keep the logic
+        consistent with the orientation of the axes.
+        """
         if self._window is None and self.render_mode == "human":
             pygame.init()
             pygame.display.init()
