@@ -173,7 +173,7 @@ So I tested **Toddler Billy** on medium and hard tests sets. I only present here
     </td>
   </tr>
   <tr>
-    <td align="center">
+    <td align="center" colspan="2">
       <img src="plots/easy/success-episode-medium.png" width="600"
            alt="Success rate during episodes">
       <br>
@@ -202,7 +202,7 @@ So I tested **Toddler Billy** on medium and hard tests sets. I only present here
     </td>
   </tr>
   <tr>
-    <td align="center">
+    <td align="center" colspan="2">
       <img src="plots/easy/success-episode-hard.png" width="600"
            alt="Success rate during episodes">
       <br>
@@ -280,7 +280,7 @@ This time I tested **Middle schooler Billy** on easy and hard tests sets too. We
     </td>
   </tr>
   <tr>
-    <td align="center">
+    <td align="center" colspan="2">
       <img src="plots/medium/success-episode-easy.png" width="600"
            alt="Success rate during episodes">
       <br>
@@ -309,7 +309,7 @@ This time I tested **Middle schooler Billy** on easy and hard tests sets too. We
     </td>
   </tr>
   <tr>
-    <td align="center">
+    <td align="center" colspan="2">
       <img src="plots/medium/success-episode-hard.png" width="600"
            alt="Success rate during episodes">
       <br>
@@ -387,7 +387,7 @@ Lastly, I tested **High schooler Billy** on easy and medium tests sets too to ma
     </td>
   </tr>
   <tr>
-    <td align="center">
+    <td align="center" colspan="2">
       <img src="plots/hard/success-episode-easy.png" width="600"
            alt="Success rate during episodes">
       <br>
@@ -416,7 +416,7 @@ Lastly, I tested **High schooler Billy** on easy and medium tests sets too to ma
     </td>
   </tr>
   <tr>
-    <td align="center">
+    <td align="center" colspan="2">
       <img src="plots/hard/success-episode-medium.png" width="600"
            alt="Success rate during episodes">
       <br>
