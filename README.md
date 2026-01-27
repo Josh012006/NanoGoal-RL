@@ -124,14 +124,13 @@ It lasted **12_000_000 timesteps**. That was **10 hours** in real life. After th
       <u><em>Status of reward during testing episodes on easy mode</em></u>
     </td>
     <td align="center">
-      <img src="plots/easy/success-episode.png" width="600"
+      <img src="plots/easy/success-episode-easy.png" width="600"
            alt="Success rate during episodes">
       <br>
       <u><em>Success rate during episodes</em></u>
     </td>
   </tr>
 </table>
-
 
 <br />
 
@@ -156,6 +155,8 @@ It lasted **12_000_000 timesteps**. That was **10 hours** in real life. After th
 But I knew he could do more than that. But first before going to the medium and hard modes, I wanted to make sure that there would really be some learning being done.
 So I tested **Toddler Billy** on medium and hard tests sets. I only present here the status of the reward during the tests : 
 
+**Test of the model trained for easy mode on medium mode worlds**
+
 <table align="center">
   <tr>
     <td align="center">
@@ -171,7 +172,19 @@ So I tested **Toddler Billy** on medium and hard tests sets. I only present here
       <u><em>The relationship between initial distance to goal, best distance during episode and final distance at the end</em></u>
     </td>
   </tr>
+  <tr>
+    <td align="center">
+      <img src="plots/easy/success-episode-medium.png" width="600"
+           alt="Success rate during episodes">
+      <br>
+      <u><em>Success rate during episodes</em></u>
+    </td>
+  </tr>
 </table>
+
+<br />
+
+**Test of the model trained for easy mode on hard mode worlds**
 
 <table align="center">
   <tr>
@@ -186,6 +199,14 @@ So I tested **Toddler Billy** on medium and hard tests sets. I only present here
            alt="init-best-final distances">
       <br>
       <u><em>The relationship between initial distance to goal, best distance during episode and final distance at the end</em></u>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="plots/easy/success-episode-hard.png" width="600"
+           alt="Success rate during episodes">
+      <br>
+      <u><em>Success rate during episodes</em></u>
     </td>
   </tr>
 </table>
@@ -211,7 +232,7 @@ I trained the easy model for another **30_000_000 timesteps**. It lasted **18 ho
       <u><em>Status of reward during testing episodes on medium mode</em></u>
     </td>
     <td align="center">
-      <img src="plots/medium/success-episode.png" width="600"
+      <img src="plots/medium/success-episode-medium.png" width="600"
            alt="Success rate during episodes">
       <br>
       <u><em>Success rate during episodes</em></u>
@@ -241,6 +262,8 @@ I trained the easy model for another **30_000_000 timesteps**. It lasted **18 ho
 
 This time I tested **Middle schooler Billy** on easy and hard tests sets too. We can clearly see more precision on the easy mode and even a somewhat satisfying performance on hard levels. But it still needs some improvements for teh hard level. And that's what we are doing next.
 
+**Test of the model trained for medium mode on easy mode worlds**
+
 <table align="center">
   <tr>
     <td align="center">
@@ -256,7 +279,19 @@ This time I tested **Middle schooler Billy** on easy and hard tests sets too. We
       <u><em>The relationship between initial distance to goal, best distance during episode and final distance at the end</em></u>
     </td>
   </tr>
+  <tr>
+    <td align="center">
+      <img src="plots/medium/success-episode-easy.png" width="600"
+           alt="Success rate during episodes">
+      <br>
+      <u><em>Success rate during episodes</em></u>
+    </td>
+  </tr>
 </table>
+
+<br />
+
+**Test of the model trained for medium mode on hard mode worlds**
 
 <table align="center">
   <tr>
@@ -271,6 +306,14 @@ This time I tested **Middle schooler Billy** on easy and hard tests sets too. We
            alt="init-best-final distances">
       <br>
       <u><em>The relationship between initial distance to goal, best distance during episode and final distance at the end</em></u>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="plots/medium/success-episode-hard.png" width="600"
+           alt="Success rate during episodes">
+      <br>
+      <u><em>Success rate during episodes</em></u>
     </td>
   </tr>
 </table>
@@ -296,7 +339,7 @@ For the last one I added **78_000_000 timesteps**. That was ** hours** in real l
       <u><em>Status of reward during testing episodes on hard mode</em></u>
     </td>
     <td align="center">
-      <img src="plots/hard/success-episode.png" width="600"
+      <img src="plots/hard/success-episode-hard.png" width="600"
            alt="Success rate during episodes">
       <br>
       <u><em>Success rate during episodes</em></u>
@@ -326,6 +369,8 @@ For the last one I added **78_000_000 timesteps**. That was ** hours** in real l
 
 Lastly, I tested **High schooler Billy** on easy and medium tests sets too to make sure he didn't forget all he previously learned:
 
+**Test of the model trained for hard mode on easy mode worlds**
+
 <table align="center">
   <tr>
     <td align="center">
@@ -341,7 +386,19 @@ Lastly, I tested **High schooler Billy** on easy and medium tests sets too to ma
       <u><em>The relationship between initial distance to goal, best distance during episode and final distance at the end</em></u>
     </td>
   </tr>
+  <tr>
+    <td align="center">
+      <img src="plots/hard/success-episode-easy.png" width="600"
+           alt="Success rate during episodes">
+      <br>
+      <u><em>Success rate during episodes</em></u>
+    </td>
+  </tr>
 </table>
+
+<br />
+
+**Test of the model trained for hard mode on medium mode worlds**
 
 <table align="center">
   <tr>
@@ -356,6 +413,14 @@ Lastly, I tested **High schooler Billy** on easy and medium tests sets too to ma
            alt="init-best-final distances">
       <br>
       <u><em>The relationship between initial distance to goal, best distance during episode and final distance at the end</em></u>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="plots/hard/success-episode-medium.png" width="600"
+           alt="Success rate during episodes">
+      <br>
+      <u><em>Success rate during episodes</em></u>
     </td>
   </tr>
 </table>
