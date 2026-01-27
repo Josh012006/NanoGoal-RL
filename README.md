@@ -1,4 +1,4 @@
-# Tha agent's behavior over different difficulty levels
+# The agent's behavior over different difficulty levels
 <p align="center">
   <img src="public/demo_easy.gif" alt="Demo">
   <br>
@@ -203,7 +203,7 @@ So I tested **Toddler Billy** on medium and hard tests sets. I only present here
   </tr>
   <tr>
     <td align="center" colspan="2">
-      <img src="plots/easy/success-episode-hard.png" width="600"
+      <img src="plots/easy/success-episode-hard.png" width="450"
            alt="Success rate during episodes">
       <br>
       <u><em>Success rate during episodes</em></u>
@@ -281,7 +281,7 @@ This time I tested **Middle schooler Billy** on easy and hard tests sets too. We
   </tr>
   <tr>
     <td align="center" colspan="2">
-      <img src="plots/medium/success-episode-easy.png" width="600"
+      <img src="plots/medium/success-episode-easy.png" width="450"
            alt="Success rate during episodes">
       <br>
       <u><em>Success rate during episodes</em></u>
@@ -310,7 +310,7 @@ This time I tested **Middle schooler Billy** on easy and hard tests sets too. We
   </tr>
   <tr>
     <td align="center" colspan="2">
-      <img src="plots/medium/success-episode-hard.png" width="600"
+      <img src="plots/medium/success-episode-hard.png" width="450"
            alt="Success rate during episodes">
       <br>
       <u><em>Success rate during episodes</em></u>
@@ -388,7 +388,7 @@ Lastly, I tested **High schooler Billy** on easy and medium tests sets too to ma
   </tr>
   <tr>
     <td align="center" colspan="2">
-      <img src="plots/hard/success-episode-easy.png" width="600"
+      <img src="plots/hard/success-episode-easy.png" width="450"
            alt="Success rate during episodes">
       <br>
       <u><em>Success rate during episodes</em></u>
