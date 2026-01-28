@@ -70,7 +70,6 @@ The implementation relies on standard RL libraries to ensure reproducibility and
 - NumPy
 - Gymnasium
 - Stable-Baselines3
-- PyTorch
 - TensorBoard
 - Tensorflow
 - Matplotlib
