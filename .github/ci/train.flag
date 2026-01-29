@@ -1,0 +1,4 @@
+train=false
+train_easy=false
+train_medium=false
+train_hard=false
