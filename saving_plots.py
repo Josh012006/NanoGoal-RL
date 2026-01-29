@@ -1,3 +1,6 @@
+# The equivalent of the plots.py program but here, instead of showing an interactive 
+# view of the  plots, they are automatically saved in the appropriate way
+
 # A file to help plot different relationships in the results of the models' testing.
 # Was generated with CHATGPT.
 
@@ -7,10 +10,19 @@ import matplotlib.pyplot as plt
 import sys
 
 
-if len(sys.argv) < 2:
-    raise ValueError("File path needed !")
+if len(sys.argv) < 4:
+    raise ValueError("Some arguments are missing!")
+
 
 CSV_PATH = sys.argv[1]
+OUTPUT_FOLDER = sys.argv[2]
+MODE = int(sys.argv[3]) # 0, 1 or 2 for easy, medium and hard respectively
+TEXT_MODE = "easy" if MODE == 0 else "medium" if MODE == 1 else "hard"
+
+# Tells if the mode difficulty is the same as the model used (0 for false and 1 for true) : is optionnal
+SAME_MODEL = True if len(sys.argv) == 4 else sys.argv[4]
+
+
 EPS = 1e-8
 
 # ---------- load ----------
@@ -115,7 +127,8 @@ ax.legend()
 apply_robust_view(ax, df["return"], q_low=QLOW, q_high=QHIGH, pad=PAD, x=df["episode"])
 ax.text(0.01, 0.98, summary_text(df["return"], "return"), transform=ax.transAxes,
         fontsize=9, verticalalignment="top")
-plt.show()
+fig.savefig(OUTPUT_FOLDER + "/return-episode-" + TEXT_MODE + ".png", dpi=150)
+plt.close(fig)
 
 # ---------- 2) Success rate (cumulative) ----------
 fig, ax = plt.subplots()
@@ -127,38 +140,43 @@ ax.set_ylabel("Success rate (cumulative)")
 ax.set_title("Success rate (test): cumulative mean")
 ax.text(0.01, 0.98, f"success rate = {succ.mean():.3f} (n={len(succ)})",
         transform=ax.transAxes, fontsize=9, verticalalignment="top")
-plt.show()
+fig.savefig(OUTPUT_FOLDER + "/success-episode-" + TEXT_MODE + ".png", dpi=150)
+plt.close(fig)
 
 # ---------- 3) Episode length (raw + running mean) ----------
-fig, ax = plt.subplots()
-ax.plot(df["episode"], df["length"], alpha=0.35, label="raw")
-ax.plot(df["episode"], running_mean(df["length"]), linewidth=2, label="running mean")
-ax.set_xlabel("Episode (arbitrary order in test)")
-ax.set_ylabel("Length")
-ax.set_title("Episode length (test): raw + running mean")
-ax.legend()
-apply_robust_view(ax, df["length"], q_low=QLOW, q_high=QHIGH, pad=PAD, x=df["episode"])
-ax.text(0.01, 0.98, summary_text(df["length"], "length"), transform=ax.transAxes,
-        fontsize=9, verticalalignment="top")
-plt.show()
+if SAME_MODEL:
+    fig, ax = plt.subplots()
+    ax.plot(df["episode"], df["length"], alpha=0.35, label="raw")
+    ax.plot(df["episode"], running_mean(df["length"]), linewidth=2, label="running mean")
+    ax.set_xlabel("Episode (arbitrary order in test)")
+    ax.set_ylabel("Length")
+    ax.set_title("Episode length (test): raw + running mean")
+    ax.legend()
+    apply_robust_view(ax, df["length"], q_low=QLOW, q_high=QHIGH, pad=PAD, x=df["episode"])
+    ax.text(0.01, 0.98, summary_text(df["length"], "length"), transform=ax.transAxes,
+            fontsize=9, verticalalignment="top")
+    fig.savefig(OUTPUT_FOLDER + "/episode-length.png", dpi=150)
+    plt.close(fig)
 
 # ---------- 4) Terminated vs Truncated rates (global + cumulative) ----------
-fig, ax = plt.subplots()
-term = df["terminated"].astype(float)
-trun = df["truncated"].astype(float)
-ax.plot(df["episode"], running_mean(term), linewidth=2, label="terminated (cumulative)")
-ax.plot(df["episode"], running_mean(trun), linewidth=2, label="truncated (cumulative)")
-ax.set_ylim(-0.05, 1.05)
-ax.set_xlabel("Episode (arbitrary order in test)")
-ax.set_ylabel("Rate (cumulative)")
-ax.set_title("Terminated vs Truncated (test): cumulative means")
-ax.legend()
-ax.text(
-    0.01, 0.98,
-    f"terminated={term.mean():.3f} | truncated={trun.mean():.3f} | n={len(df)}",
-    transform=ax.transAxes, fontsize=9, verticalalignment="top"
-)
-plt.show()
+if SAME_MODEL:
+    fig, ax = plt.subplots()
+    term = df["terminated"].astype(float)
+    trun = df["truncated"].astype(float)
+    ax.plot(df["episode"], running_mean(term), linewidth=2, label="terminated (cumulative)")
+    ax.plot(df["episode"], running_mean(trun), linewidth=2, label="truncated (cumulative)")
+    ax.set_ylim(-0.05, 1.05)
+    ax.set_xlabel("Episode (arbitrary order in test)")
+    ax.set_ylabel("Rate (cumulative)")
+    ax.set_title("Terminated vs Truncated (test): cumulative means")
+    ax.legend()
+    ax.text(
+        0.01, 0.98,
+        f"terminated={term.mean():.3f} | truncated={trun.mean():.3f} | n={len(df)}",
+        transform=ax.transAxes, fontsize=9, verticalalignment="top"
+    )
+    fig.savefig(OUTPUT_FOLDER + "/terminated-truncated.png", dpi=150)
+    plt.close(fig)
 
 # ---------- 5) Distances (distributions + cumulative mean) ----------
 # In test, plotting distances vs episode is not a temporal story.
@@ -178,31 +196,37 @@ all_d = pd.concat(
     ignore_index=True
 )
 apply_robust_view(ax, all_d, q_low=QLOW, q_high=QHIGH, pad=PAD, x=None)
-plt.show()
+fig.savefig(OUTPUT_FOLDER + "/distances-" + TEXT_MODE + ".png", dpi=150)
+plt.close(fig)
 
 # ---------- 6) Regret (raw + running mean) ----------
-fig, ax = plt.subplots()
-ax.plot(df["episode"], df["regret"], alpha=0.35, label="raw")
-ax.plot(df["episode"], running_mean(df["regret"]), linewidth=2, label="running mean")
-ax.axhline(0.0, linewidth=1)
-ax.set_xlabel("Episode (arbitrary order in test)")
-ax.set_ylabel("Regret = final - best")
-ax.set_title("Regret (test): raw + running mean")
-ax.legend()
-apply_robust_view(ax, df["regret"], q_low=QLOW, q_high=QHIGH, pad=PAD, x=df["episode"])
-ax.text(0.01, 0.98, summary_text(df["regret"], "regret"), transform=ax.transAxes,
-        fontsize=9, verticalalignment="top")
-plt.show()
+if SAME_MODEL:
+    fig, ax = plt.subplots()
+    ax.plot(df["episode"], df["regret"], alpha=0.35, label="raw")
+    ax.plot(df["episode"], running_mean(df["regret"]), linewidth=2, label="running mean")
+    ax.axhline(0.0, linewidth=1)
+    ax.set_xlabel("Episode (arbitrary order in test)")
+    ax.set_ylabel("Regret = final - best")
+    ax.set_title("Regret (test): raw + running mean")
+    ax.legend()
+    apply_robust_view(ax, df["regret"], q_low=QLOW, q_high=QHIGH, pad=PAD, x=df["episode"])
+    ax.text(0.01, 0.98, summary_text(df["regret"], "regret"), transform=ax.transAxes,
+            fontsize=9, verticalalignment="top")
+    fig.savefig(OUTPUT_FOLDER + "/regret-episode.png", dpi=150)
+    plt.close(fig)
 
 
 # ---------- 7) Success vs init distance (binned) ----------
-bins = pd.qcut(df["init_dist_goal"], q=6, duplicates="drop")
-grp = df.groupby(bins)["success"].mean()
+if SAME_MODEL:
+    bins = pd.qcut(df["init_dist_goal"], q=6, duplicates="drop")
+    grp = df.groupby(bins)["success"].mean()
 
-plt.figure()
-plt.plot(range(len(grp)), grp.values, marker="o")
-plt.ylim(-0.05, 1.05)
-plt.xlabel("Init distance bin (quantiles)")
-plt.ylabel("Success rate")
-plt.title("Success rate vs Init Distance (binned)")
-plt.show()
+    plt.figure()
+    plt.plot(range(len(grp)), grp.values, marker="o")
+    plt.ylim(-0.05, 1.05)
+    plt.xlabel("Init distance bin (quantiles)")
+    plt.ylabel("Success rate")
+    plt.title("Success rate vs Init Distance (binned)")
+    fig = plt.gcf()
+    fig.savefig(OUTPUT_FOLDER + "/success-distance.png", dpi=150)
+    plt.close(fig)
