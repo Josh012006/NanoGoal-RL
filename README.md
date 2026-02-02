@@ -74,6 +74,7 @@ The implementation relies on standard RL libraries to ensure reproducibility and
 - Tensorflow
 - Matplotlib
 - Pandas
+- Pygame
 
 ## More on the training process
 
