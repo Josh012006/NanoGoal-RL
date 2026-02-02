@@ -6,10 +6,11 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import sys
 
-CSV_PATH = sys.argv[1]
-if CSV_PATH is None:
+
+if len(sys.argv) < 2:
     raise ValueError("File path needed !")
 
+CSV_PATH = sys.argv[1]
 EPS = 1e-8
 
 # ---------- load ----------

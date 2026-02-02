@@ -1,0 +1,183 @@
+name: Train models
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  train:
+    runs-on: [self-hosted, linux, cpu]
+    steps:
+      - name: Fetch code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # Sur PR, on veut la branche source (head), pas le merge commit
+          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
+      
+      - name: Read train.flag
+        id: read_flag
+        run: |
+          set -e
+
+          FLAG_FILE=".github/ci/train.flag"
+
+          if [ ! -f "$FLAG_FILE" ]; then
+            echo "train=false" >> "$GITHUB_OUTPUT"
+            echo "train_easy=false" >> "$GITHUB_OUTPUT"
+            echo "train_medium=false" >> "$GITHUB_OUTPUT"
+            echo "train_hard=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Lire ligne par ligne (clé=valeur)
+          while IFS='=' read -r key value; do
+            # ignorer lignes vides ou commentaires
+            [ -z "$key" ] && continue
+            case "$key" in
+              train)
+                echo "train=$value" >> "$GITHUB_OUTPUT"
+                ;;
+              train_easy)
+                echo "train_easy=$value" >> "$GITHUB_OUTPUT"
+                ;;
+              train_medium)
+                echo "train_medium=$value" >> "$GITHUB_OUTPUT"
+                ;;
+              train_hard)
+                echo "train_hard=$value" >> "$GITHUB_OUTPUT"
+                ;;
+            esac
+          done < "$FLAG_FILE"
+
+      - name: Stop job if training is disabled
+        if: steps.read_flag.outputs.train == 'false'
+        run: |
+          echo "Training disabled → stopping job"
+          exit 0
+
+      - name: Install dependencies
+        if: steps.read_flag.outputs.train == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Prepare environment for training
+        if: steps.read_flag.outputs.train == 'true'
+        run: |
+          set -e
+
+          mkdir -p plots/easy
+          mkdir -p plots/medium
+          mkdir -p plots/hard
+
+          rm -rf logs
+          mkdir -p logs
+
+      - name: Train easy model
+        if: steps.read_flag.outputs.train == 'true' && steps.read_flag.outputs.train_easy == 'true'
+        run: |
+          python train_easy.py
+
+          python eval.py 0 0
+          python eval.py 0 1
+          python eval.py 0 2
+
+          python saving_plots.py results/easy/ppo_eval_easy.csv plots/easy 0  
+          python saving_plots.py results/easy/ppo_eval_medium.csv plots/easy 1 0 
+          python saving_plots.py results/easy/ppo_eval_hard.csv plots/easy 2 0 
+
+      - name: Train medium model
+        if: steps.read_flag.outputs.train == 'true' && steps.read_flag.outputs.train_medium == 'true'
+        run: |
+          python train_medium.py
+
+          python eval.py 1 0
+          python eval.py 1 1
+          python eval.py 1 2
+
+          python saving_plots.py results/medium/ppo_eval_easy.csv plots/medium 0 0
+          python saving_plots.py results/medium/ppo_eval_medium.csv plots/medium 1  
+          python saving_plots.py results/medium/ppo_eval_hard.csv plots/medium 2 0 
+
+      - name: Train hard model
+        if: steps.read_flag.outputs.train == 'true' && steps.read_flag.outputs.train_hard == 'true'
+        run: |
+          python train_hard.py
+
+          python eval.py 2 0
+          python eval.py 2 1
+          python eval.py 2 2
+
+          python saving_plots.py results/hard/ppo_eval_easy.csv plots/hard 0 0
+          python saving_plots.py results/hard/ppo_eval_medium.csv plots/hard 1 0
+          python saving_plots.py results/hard/ppo_eval_hard.csv plots/hard 2
+      
+      - name: Commit & push changes
+        if: steps.read_flag.outputs.train == 'true'
+        run: |
+          set -e
+
+          FLAG_FILE=".github/ci/train.flag"
+          {
+            echo "train=false"
+            echo "train_easy=false"
+            echo "train_medium=false"
+            echo "train_hard=false"
+          } > "$FLAG_FILE"
+
+          # Config git identity
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Savoir quel SHA mettre dans le message
+          SHA="$GITHUB_SHA"
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            SHA="$(jq -r .pull_request.head.sha "$GITHUB_EVENT_PATH")"
+          fi
+
+          # Ajouter changements
+          git add .
+
+          # Ne pas échouer si rien à commit
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "No changes to commit."
+            exit 0
+          fi
+
+          git commit -m "feat: Trained models after commit of ID: $SHA"
+
+          # Push: cas push
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            BRANCH="${GITHUB_REF_NAME}"
+            git push origin "HEAD:${BRANCH}"
+            exit 0
+          fi
+
+          # Push: cas pull_request (seulement si pas fork)
+          IS_FORK="$(jq -r .pull_request.head.repo.fork "$GITHUB_EVENT_PATH")"
+          if [ "$IS_FORK" = "true" ]; then
+            echo "PR from fork: skipping push (not permitted)."
+            exit 0
+          fi
+
+          PR_BRANCH="${GITHUB_HEAD_REF}"
+          git push origin "HEAD:${PR_BRANCH}"
+
+
+      - name: Create issue
+        if: steps.read_flag.outputs.train == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHA="$GITHUB_SHA"
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            SHA="$(jq -r .pull_request.head.sha "$GITHUB_EVENT_PATH")"
+          fi
+          gh issue create \
+            --title "Training finished for $SHA" \
+            --body $'- [ ] Generate and review training metrics\n- [ ] Validate model performance\n- [ ] Make video demos of the models performance\n- [ ] Update README\n\nModels trained from commit: '"$SHA"
