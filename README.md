@@ -322,7 +322,7 @@ This time I tested **Middle schooler Billy** on easy and hard tests sets too. We
 <br />
 
 ### Hard mode training
-For the last one I added **78_000_000 timesteps**. That was ** hours** in real life. Here were the statistics : 
+For the last one I added **78_000_000 timesteps**. That was **1 day 8 hours** in real life. Here were the statistics : 
 <p align="center">
   <img src="public/learning_hard.png" width="800" alt="the reward mean during learning"><br>
   <u><em>Evolution of reward during learning episodes</em></u>
@@ -424,6 +424,8 @@ Lastly, I tested **High schooler Billy** on easy and medium tests sets too to ma
     </td>
   </tr>
 </table>
+
+**As you can see for some reason, my model trained for hard worlds did worst than my previous models. So my next step will be to solve that issue. I'm thinking about increasing the number of parameters the model can learn and also giving it more time to train itself. Stay tuned to see how it goes**.
 
 
 ## Installation
