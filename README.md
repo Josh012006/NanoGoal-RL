@@ -78,8 +78,8 @@ The implementation relies on standard RL libraries to ensure reproducibility and
 
 ## More on the training process
 
-In the first version of the project (that you can see on branch `v0` https://github.com/Josh012006/NanoGoal-RL/tree/v0), the model was just trained on randomly generated and highly varying worlds, be it easy, medium or hard mode. Moreaover, it was trained only for 800_000 timesteps (approximatively 1300 complete episodes) which looking back at it, didn't represent much time for learning so much things. 
-The consequence wass that even though the model was able to reduce the distance between it and the target and sometimes maintain a continuous trajectory, in most of the cases, it wasn't even reaching the target. The model at that time was taking too many unecessary actions and a lot of time just spent the whole episode spinning in circles before making any progress.
+In the first version of the project (that you can see on branch `v0` https://github.com/Josh012006/NanoGoal-RL/tree/v0), the model was just trained on randomly generated and highly varying worlds, be it easy, medium or hard mode. Moreover, it was trained only for 800_000 timesteps (approximatively 1300 complete episodes) which looking back at it, didn't represent much time for learning so much things. 
+The consequence was that even though the model was able to reduce the distance between it and the target and sometimes maintain a continuous trajectory, in most of the cases, it wasn't even reaching the target. The model at that time was taking too many unecessary actions and a lot of time just spent the whole episode spinning in circles before making any progress.
 
 That behavior was caused by two main things : 
 - the fact that the environments and other training conditions were changing too much from one episode to another
