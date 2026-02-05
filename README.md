@@ -433,7 +433,7 @@ Lastly, I tested **High schooler Billy** on easy and medium tests sets too to ma
 ```bash
 git clone https://github.com/your-username/NanoGoal-RL.git
 cd NanoGoal-RL
-python -m venv venv
+python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 ```
@@ -442,17 +442,17 @@ pip install -r requirements.txt
 
 Train the model for easy mode:
 ```bash
-python train_easy.py
+python3 train_easy.py
 ```
 
 Train the model for medium mode:
 ```bash
-python train_medium.py
+python3 train_medium.py
 ```
 
 Train the model for hard mode:
 ```bash
-python train_hard.py
+python3 train_hard.py
 ```
 
 <br />
@@ -460,26 +460,26 @@ python train_hard.py
 Vizualize the learning statistics for easy mode:
 
 ```bash
-python -m tensorboard.main --logdir logs/<easy_logs_folder>
+python3 -m tensorboard.main --logdir logs/<easy_logs_folder>
 ```
 
 Vizualize the learning statistics for medium mode:
 
 ```bash
-python -m tensorboard.main --logdir logs/<medium_logs_folder>
+python3 -m tensorboard.main --logdir logs/<medium_logs_folder>
 ```
 
 Vizualize the learning statistics for hard mode:
 
 ```bash
-python -m tensorboard.main --logdir logs/<hard_logs_folder>
+python3 -m tensorboard.main --logdir logs/<hard_logs_folder>
 ```
 
 <br />
 
 Test a trained model over 100 episodes:
 ```bash
-python eval.py <difficulty_the_model_was_trained_for> <difficulty_of_the_worlds_seeds>
+python3 eval.py <difficulty_the_model_was_trained_for> <difficulty_of_the_worlds_seeds>
 ```
 where : 
 - difficulty_the_model_was_trained_for : 0 for easy, 1 for medium and 2 for hard
@@ -488,14 +488,14 @@ The results will appear as CSV files in the results folder.
 
 Vizualize trajectories concerning the performances for the 300 test episodes:
 ```bash
-python plots.py <csv_file_path>
+python3 plots.py <csv_file_path>
 ```
 
 <br />
 
 Launch an episode with visual rendering with the trained agent:
 ```bash
-python visual_eval.py <difficulty_the_model_was_trained_for> <difficulty_of_the_world_seed>
+python3 visual_eval.py <difficulty_the_model_was_trained_for> <difficulty_of_the_world_seed>
 ```
 where : 
 - difficulty_the_model_was_trained_for : 0 for easy, 1 for medium and 2 for hard

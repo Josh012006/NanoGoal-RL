@@ -63,7 +63,7 @@ jobs:
       - name: Install dependencies
         if: steps.read_flag.outputs.train == 'true'
         run: |
-          python -m pip install --upgrade pip
+          python3 -m pip install --upgrade pip
           pip install -r requirements.txt
       
       - name: Prepare environment for training
@@ -81,41 +81,41 @@ jobs:
       - name: Train easy model
         if: steps.read_flag.outputs.train == 'true' && steps.read_flag.outputs.train_easy == 'true'
         run: |
-          python train_easy.py
+          python3 train_easy.py
 
-          python eval.py 0 0
-          python eval.py 0 1
-          python eval.py 0 2
+          python3 eval.py 0 0
+          python3 eval.py 0 1
+          python3 eval.py 0 2
 
-          python saving_plots.py results/easy/ppo_eval_easy.csv plots/easy 0  
-          python saving_plots.py results/easy/ppo_eval_medium.csv plots/easy 1 0 
-          python saving_plots.py results/easy/ppo_eval_hard.csv plots/easy 2 0 
+          python3 saving_plots.py results/easy/ppo_eval_easy.csv plots/easy 0  
+          python3 saving_plots.py results/easy/ppo_eval_medium.csv plots/easy 1 0 
+          python3 saving_plots.py results/easy/ppo_eval_hard.csv plots/easy 2 0 
 
       - name: Train medium model
         if: steps.read_flag.outputs.train == 'true' && steps.read_flag.outputs.train_medium == 'true'
         run: |
-          python train_medium.py
+          python3 train_medium.py
 
-          python eval.py 1 0
-          python eval.py 1 1
-          python eval.py 1 2
+          python3 eval.py 1 0
+          python3 eval.py 1 1
+          python3 eval.py 1 2
 
-          python saving_plots.py results/medium/ppo_eval_easy.csv plots/medium 0 0
-          python saving_plots.py results/medium/ppo_eval_medium.csv plots/medium 1  
-          python saving_plots.py results/medium/ppo_eval_hard.csv plots/medium 2 0 
+          python3 saving_plots.py results/medium/ppo_eval_easy.csv plots/medium 0 0
+          python3 saving_plots.py results/medium/ppo_eval_medium.csv plots/medium 1  
+          python3 saving_plots.py results/medium/ppo_eval_hard.csv plots/medium 2 0 
 
       - name: Train hard model
         if: steps.read_flag.outputs.train == 'true' && steps.read_flag.outputs.train_hard == 'true'
         run: |
-          python train_hard.py
+          python3 train_hard.py
 
-          python eval.py 2 0
-          python eval.py 2 1
-          python eval.py 2 2
+          python3 eval.py 2 0
+          python3 eval.py 2 1
+          python3 eval.py 2 2
 
-          python saving_plots.py results/hard/ppo_eval_easy.csv plots/hard 0 0
-          python saving_plots.py results/hard/ppo_eval_medium.csv plots/hard 1 0
-          python saving_plots.py results/hard/ppo_eval_hard.csv plots/hard 2
+          python3 saving_plots.py results/hard/ppo_eval_easy.csv plots/hard 0 0
+          python3 saving_plots.py results/hard/ppo_eval_medium.csv plots/hard 1 0
+          python3 saving_plots.py results/hard/ppo_eval_hard.csv plots/hard 2
       
       - name: Commit & push changes
         if: steps.read_flag.outputs.train == 'true'
