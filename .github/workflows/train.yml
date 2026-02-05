@@ -11,6 +11,9 @@ permissions:
 jobs:
   train:
     runs-on: [self-hosted, linux, cpu]
+    env:
+      VENV: .venv/bin
+
     steps:
       - name: Fetch code
         uses: actions/checkout@v4
@@ -18,7 +21,7 @@ jobs:
           fetch-depth: 0
           # Sur PR, on veut la branche source (head), pas le merge commit
           ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
-      
+
       - name: Read train.flag
         id: read_flag
         run: |
@@ -60,12 +63,17 @@ jobs:
           echo "Training disabled → stopping job"
           exit 0
 
-      - name: Install dependencies
+      - name: Install dependencies (venv, PEP 668 safe)
         if: steps.read_flag.outputs.train == 'true'
         run: |
-          python3 -m pip install --upgrade pip
-          pip install -r requirements.txt
-      
+          set -e
+
+          # Sur Debian/Ubuntu récents, pip global est bloqué (PEP 668).
+          # On installe le support venv puis on installe les libs dans un venv local au repo.
+          python3 -m venv .venv
+          $VENV/python -m pip install --upgrade pip
+          $VENV/python -m pip install -r requirements.txt
+
       - name: Prepare environment for training
         if: steps.read_flag.outputs.train == 'true'
         run: |
@@ -81,42 +89,48 @@ jobs:
       - name: Train easy model
         if: steps.read_flag.outputs.train == 'true' && steps.read_flag.outputs.train_easy == 'true'
         run: |
-          python3 train_easy.py
+          set -e
 
-          python3 eval.py 0 0
-          python3 eval.py 0 1
-          python3 eval.py 0 2
+          $VENV/python train_easy.py
 
-          python3 saving_plots.py results/easy/ppo_eval_easy.csv plots/easy 0  
-          python3 saving_plots.py results/easy/ppo_eval_medium.csv plots/easy 1 0 
-          python3 saving_plots.py results/easy/ppo_eval_hard.csv plots/easy 2 0 
+          $VENV/python eval.py 0 0
+          $VENV/python eval.py 0 1
+          $VENV/python eval.py 0 2
+
+          $VENV/python saving_plots.py results/easy/ppo_eval_easy.csv plots/easy 0
+          $VENV/python saving_plots.py results/easy/ppo_eval_medium.csv plots/easy 1 0
+          $VENV/python saving_plots.py results/easy/ppo_eval_hard.csv plots/easy 2 0
 
       - name: Train medium model
         if: steps.read_flag.outputs.train == 'true' && steps.read_flag.outputs.train_medium == 'true'
         run: |
-          python3 train_medium.py
+          set -e
 
-          python3 eval.py 1 0
-          python3 eval.py 1 1
-          python3 eval.py 1 2
+          $VENV/python train_medium.py
 
-          python3 saving_plots.py results/medium/ppo_eval_easy.csv plots/medium 0 0
-          python3 saving_plots.py results/medium/ppo_eval_medium.csv plots/medium 1  
-          python3 saving_plots.py results/medium/ppo_eval_hard.csv plots/medium 2 0 
+          $VENV/python eval.py 1 0
+          $VENV/python eval.py 1 1
+          $VENV/python eval.py 1 2
+
+          $VENV/python saving_plots.py results/medium/ppo_eval_easy.csv plots/medium 0 0
+          $VENV/python saving_plots.py results/medium/ppo_eval_medium.csv plots/medium 1
+          $VENV/python saving_plots.py results/medium/ppo_eval_hard.csv plots/medium 2 0
 
       - name: Train hard model
         if: steps.read_flag.outputs.train == 'true' && steps.read_flag.outputs.train_hard == 'true'
         run: |
-          python3 train_hard.py
+          set -e
 
-          python3 eval.py 2 0
-          python3 eval.py 2 1
-          python3 eval.py 2 2
+          $VENV/python train_hard.py
 
-          python3 saving_plots.py results/hard/ppo_eval_easy.csv plots/hard 0 0
-          python3 saving_plots.py results/hard/ppo_eval_medium.csv plots/hard 1 0
-          python3 saving_plots.py results/hard/ppo_eval_hard.csv plots/hard 2
-      
+          $VENV/python eval.py 2 0
+          $VENV/python eval.py 2 1
+          $VENV/python eval.py 2 2
+
+          $VENV/python saving_plots.py results/hard/ppo_eval_easy.csv plots/hard 0 0
+          $VENV/python saving_plots.py results/hard/ppo_eval_medium.csv plots/hard 1 0
+          $VENV/python saving_plots.py results/hard/ppo_eval_hard.csv plots/hard 2
+
       - name: Commit & push changes
         if: steps.read_flag.outputs.train == 'true'
         run: |
@@ -168,16 +182,18 @@ jobs:
           PR_BRANCH="${GITHUB_HEAD_REF}"
           git push origin "HEAD:${PR_BRANCH}"
 
-
       - name: Create issue
         if: steps.read_flag.outputs.train == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -e
+
           SHA="$GITHUB_SHA"
           if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
             SHA="$(jq -r .pull_request.head.sha "$GITHUB_EVENT_PATH")"
           fi
+
           gh issue create \
             --title "Training finished for $SHA" \
             --body $'- [ ] Generate and review training metrics\n- [ ] Validate model performance\n- [ ] Make video demos of the models performance\n- [ ] Update README\n\nModels trained from commit: '"$SHA"
