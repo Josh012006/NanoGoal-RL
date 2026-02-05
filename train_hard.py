@@ -9,7 +9,7 @@ model = PPO.load(
 )
 
 model.learn(
-    total_timesteps=78_000_000,  # approximatively 130000 episodes
+    total_timesteps=100_000_000,  # approximatively 170000 episodes
     reset_num_timesteps=False,
     tb_log_name="hard"
 )
