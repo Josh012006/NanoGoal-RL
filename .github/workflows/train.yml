@@ -11,6 +11,7 @@ permissions:
 jobs:
   train:
     runs-on: [self-hosted, linux, cpu]
+    timeout-minutes: 7200
     env:
       VENV: .venv/bin
 
@@ -163,7 +164,7 @@ jobs:
             exit 0
           fi
 
-          git commit -m "feat: Trained models after commit of ID: $SHA"
+          git commit -m "feat: Trained models after commit of ID: $SHA [skip ci]"
 
           # Push: cas push
           if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
