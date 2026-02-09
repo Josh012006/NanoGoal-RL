@@ -12,6 +12,7 @@ jobs:
   train:
     runs-on: [self-hosted, linux, cpu]
     timeout-minutes: 7200
+
     env:
       VENV: .venv/bin
 
@@ -20,7 +21,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          # Sur PR, on veut la branche source (head), pas le merge commit
           ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
 
       - name: Read train.flag
@@ -38,23 +38,13 @@ jobs:
             exit 0
           fi
 
-          # Lire ligne par ligne (clé=valeur)
           while IFS='=' read -r key value; do
-            # ignorer lignes vides ou commentaires
             [ -z "$key" ] && continue
             case "$key" in
-              train)
-                echo "train=$value" >> "$GITHUB_OUTPUT"
-                ;;
-              train_easy)
-                echo "train_easy=$value" >> "$GITHUB_OUTPUT"
-                ;;
-              train_medium)
-                echo "train_medium=$value" >> "$GITHUB_OUTPUT"
-                ;;
-              train_hard)
-                echo "train_hard=$value" >> "$GITHUB_OUTPUT"
-                ;;
+              train) echo "train=$value" >> "$GITHUB_OUTPUT" ;;
+              train_easy) echo "train_easy=$value" >> "$GITHUB_OUTPUT" ;;
+              train_medium) echo "train_medium=$value" >> "$GITHUB_OUTPUT" ;;
+              train_hard) echo "train_hard=$value" >> "$GITHUB_OUTPUT" ;;
             esac
           done < "$FLAG_FILE"
 
@@ -64,26 +54,19 @@ jobs:
           echo "Training disabled → stopping job"
           exit 0
 
-      - name: Install dependencies (venv, PEP 668 safe)
+      - name: Install dependencies
         if: steps.read_flag.outputs.train == 'true'
         run: |
           set -e
-
-          # Sur Debian/Ubuntu récents, pip global est bloqué (PEP 668).
-          # On installe le support venv puis on installe les libs dans un venv local au repo.
           python3 -m venv .venv
           $VENV/python -m pip install --upgrade pip
           $VENV/python -m pip install -r requirements.txt
 
-      - name: Prepare environment for training
+      - name: Prepare environment
         if: steps.read_flag.outputs.train == 'true'
         run: |
           set -e
-
-          mkdir -p plots/easy
-          mkdir -p plots/medium
-          mkdir -p plots/hard
-
+          mkdir -p plots/easy plots/medium plots/hard
           rm -rf logs
           mkdir -p logs
 
@@ -91,13 +74,10 @@ jobs:
         if: steps.read_flag.outputs.train == 'true' && steps.read_flag.outputs.train_easy == 'true'
         run: |
           set -e
-
           $VENV/python train_easy.py
-
           $VENV/python eval.py 0 0
           $VENV/python eval.py 0 1
           $VENV/python eval.py 0 2
-
           $VENV/python saving_plots.py results/easy/ppo_eval_easy.csv plots/easy 0
           $VENV/python saving_plots.py results/easy/ppo_eval_medium.csv plots/easy 1 0
           $VENV/python saving_plots.py results/easy/ppo_eval_hard.csv plots/easy 2 0
@@ -106,13 +86,10 @@ jobs:
         if: steps.read_flag.outputs.train == 'true' && steps.read_flag.outputs.train_medium == 'true'
         run: |
           set -e
-
           $VENV/python train_medium.py
-
           $VENV/python eval.py 1 0
           $VENV/python eval.py 1 1
           $VENV/python eval.py 1 2
-
           $VENV/python saving_plots.py results/medium/ppo_eval_easy.csv plots/medium 0 0
           $VENV/python saving_plots.py results/medium/ppo_eval_medium.csv plots/medium 1
           $VENV/python saving_plots.py results/medium/ppo_eval_hard.csv plots/medium 2 0
@@ -121,19 +98,18 @@ jobs:
         if: steps.read_flag.outputs.train == 'true' && steps.read_flag.outputs.train_hard == 'true'
         run: |
           set -e
-
           $VENV/python train_hard.py
-
           $VENV/python eval.py 2 0
           $VENV/python eval.py 2 1
           $VENV/python eval.py 2 2
-
           $VENV/python saving_plots.py results/hard/ppo_eval_easy.csv plots/hard 0 0
           $VENV/python saving_plots.py results/hard/ppo_eval_medium.csv plots/hard 1 0
           $VENV/python saving_plots.py results/hard/ppo_eval_hard.csv plots/hard 2
 
       - name: Commit & push changes
         if: steps.read_flag.outputs.train == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -e
 
@@ -145,20 +121,16 @@ jobs:
             echo "train_hard=false"
           } > "$FLAG_FILE"
 
-          # Config git identity
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Savoir quel SHA mettre dans le message
           SHA="$GITHUB_SHA"
-          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
             SHA="$(jq -r .pull_request.head.sha "$GITHUB_EVENT_PATH")"
           fi
 
-          # Ajouter changements
           git add .
 
-          # Ne pas échouer si rien à commit
           if [ -z "$(git status --porcelain)" ]; then
             echo "No changes to commit."
             exit 0
@@ -166,22 +138,22 @@ jobs:
 
           git commit -m "feat: Trained models after commit of ID: $SHA [skip ci]"
 
-          # Push: cas push
-          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
-            BRANCH="${GITHUB_REF_NAME}"
-            git push origin "HEAD:${BRANCH}"
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            git push \
+              https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git \
+              "HEAD:${GITHUB_REF_NAME}"
             exit 0
           fi
 
-          # Push: cas pull_request (seulement si pas fork)
           IS_FORK="$(jq -r .pull_request.head.repo.fork "$GITHUB_EVENT_PATH")"
           if [ "$IS_FORK" = "true" ]; then
-            echo "PR from fork: skipping push (not permitted)."
+            echo "PR from fork: skipping push."
             exit 0
           fi
 
-          PR_BRANCH="${GITHUB_HEAD_REF}"
-          git push origin "HEAD:${PR_BRANCH}"
+          git push \
+            https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git \
+            "HEAD:${GITHUB_HEAD_REF}"
 
       - name: Create issue
         if: steps.read_flag.outputs.train == 'true'
@@ -191,7 +163,7 @@ jobs:
           set -e
 
           SHA="$GITHUB_SHA"
-          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
             SHA="$(jq -r .pull_request.head.sha "$GITHUB_EVENT_PATH")"
           fi
 
