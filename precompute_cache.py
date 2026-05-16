@@ -2,8 +2,8 @@
 # Run this script once after classify_seeds.py:
 #   python precompute_cache.py
 # It generates topology_cache (shelve files) containing for each seed:
-#   - the topology (np.ndarray)
-#   - the filtered available space (list of np.array)
+#   - the topology (np.ndarray of shape (125, 125))
+#   - the filtered available space (np.ndarray of shape (N, 2))
 
 import json
 import shelve
@@ -30,7 +30,11 @@ def precompute(seed: int, environment: E.NanoEnv):
         )
         new_seed += 1
         if len(available) > 100:
-            return topology, available
+            # Stack the list of np.array([i, j]) into a single (N, 2) array
+            # instead of storing thousands of individual np.arrays — drastically
+            # reduces serialization overhead and final file size
+            available_arr = np.stack(available, axis=0).astype(np.float32)
+            return topology, available_arr
 
 
 if __name__ == "__main__":
@@ -48,12 +52,12 @@ if __name__ == "__main__":
     # shelve writes each entry directly to disk — no MemoryError on large datasets
     with shelve.open("topology_cache") as cache:
         for i, seed in enumerate(all_training_seeds):
-            topology, available = precompute(seed, environment)
+            topology, available_arr = precompute(seed, environment)
 
             # shelve requires string keys
             cache[str(seed)] = {
-                "topology":  topology,
-                "available": available,
+                "topology":  topology,       # np.ndarray (125, 125)
+                "available": available_arr,  # np.ndarray (N, 2) — compact
             }
 
             if (i + 1) % 100 == 0:

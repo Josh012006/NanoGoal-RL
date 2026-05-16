@@ -409,8 +409,10 @@ class NanoEnv(gym.Env):
         # ── World generation (with cache if available) ───────────────────────
         if str(used_seed) in self._topology_cache:
             # Cache hit: precomputed topology and free space
-            self._vessel_topology = self._topology_cache[str(used_seed)]["topology"].copy()
-            available_space       = list(self._topology_cache[str(used_seed)]["available"])
+            entry                 = self._topology_cache[str(used_seed)]
+            self._vessel_topology = entry["topology"].copy()
+            # Reconstruct list of np.array([i, j]) from the (N, 2) array
+            available_space       = [entry["available"][k] for k in range(len(entry["available"]))]
         else:
             # Cache miss: normal generation
             new_seed = 1 + int(used_seed)

@@ -70,6 +70,18 @@ jobs:
           rm -rf logs
           mkdir -p logs
 
+      - name: Precompute topology cache
+        if: steps.read_flag.outputs.train == 'true'
+        run: |
+          set -e
+          if [ ! -f "topology_cache.dir" ] && [ ! -f "topology_cache.dat" ] && [ ! -f "topology_cache.db" ]; then
+            echo "Topology cache not found — running precompute_cache.py..."
+            $VENV/python precompute_cache.py
+            echo "Cache generated."
+          else
+            echo "Topology cache already exists — skipping precompute."
+          fi
+
       - name: Train easy model
         if: steps.read_flag.outputs.train == 'true' && steps.read_flag.outputs.train_easy == 'true'
         run: |
@@ -129,7 +141,9 @@ jobs:
             SHA="$(jq -r .pull_request.head.sha "$GITHUB_EVENT_PATH")"
           fi
 
+          # Stage everything then explicitly exclude topology cache files
           git add .
+          git reset topology_cache.dir topology_cache.bak topology_cache.dat topology_cache.db 2>/dev/null || true
 
           if [ -z "$(git status --porcelain)" ]; then
             echo "No changes to commit."
