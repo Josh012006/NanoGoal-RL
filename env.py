@@ -1,3 +1,4 @@
+import os
 from typing import Optional, Literal
 import gymnasium as gym
 import numpy as np
@@ -30,25 +31,31 @@ class NanoEnv(gym.Env):
             max_white: The maximum number of white cells in the environment. White cells are obstacles that reduce the agent's velocity more than red cells when it collides with them.
         """
 
-        # Introducing difficulty levels for the learning curriculum
-        self.difficulty = difficulty
+        if os.path.exists("seeds.json"):
+            # Introducing difficulty levels for the learning curriculum
+            self.difficulty = difficulty
 
-        # Load the classified seeds from the JSON file
-        with open("seeds.json") as f:
-            _all_seeds = json.load(f)
+            # Load the classified seeds from the JSON file
+            with open("seeds.json") as f:
+                _all_seeds = json.load(f)
 
-        self._episode_rng = np.random.default_rng(99999)
+            self._episode_rng = np.random.default_rng(99999)
 
-        # Take 40% of the seeds from each category to form the training pools. The rest will be ignored for training but they are still valid seeds that can be used for evaluation.
-        def _sample_category(seeds_list, pct=0.40):
-            arr = np.array(seeds_list)
-            k = max(1, int(len(arr) * pct))
-            idx = self._episode_rng.choice(len(arr), size=k, replace=False)
-            return arr[idx].tolist()
+            # Take 40% of the seeds from each category to form the training pools. The rest will be ignored for training but they are still valid seeds that can be used for evaluation.
+            def _sample_category(seeds_list, pct=0.40):
+                arr = np.array(seeds_list)
+                k = max(1, int(len(arr) * pct))
+                idx = self._episode_rng.choice(len(arr), size=k, replace=False)
+                return arr[idx].tolist()
 
-        self.__easy_seeds   = _sample_category(_all_seeds["easy"])
-        self.__medium_seeds = _sample_category(_all_seeds["medium"])
-        self.__hard_seeds   = _sample_category(_all_seeds["hard"])
+            self.__easy_seeds   = _sample_category(_all_seeds["easy"])
+            self.__medium_seeds = _sample_category(_all_seeds["medium"])
+            self.__hard_seeds   = _sample_category(_all_seeds["hard"])
+        else : 
+            # Fallback pendant la génération de seeds.json
+            self.__easy_seeds   = []
+            self.__medium_seeds = []
+            self.__hard_seeds   = []
 
         self._easy_perm = [self.__easy_seeds[i] for i in self._episode_rng.permutation(len(self.__easy_seeds))]
         self._medium_perm = [self.__medium_seeds[i] for i in self._episode_rng.permutation(len(self.__medium_seeds))]
