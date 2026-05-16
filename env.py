@@ -1,4 +1,5 @@
 import os
+import shelve
 from typing import Optional, Literal
 import gymnasium as gym
 import numpy as np
@@ -36,7 +37,7 @@ class NanoEnv(gym.Env):
         
         self._episode_rng = np.random.default_rng(99999)
 
-        
+
         if os.path.exists("seeds.json"):
 
             # Load the classified seeds from the JSON file
@@ -62,6 +63,13 @@ class NanoEnv(gym.Env):
         self._easy_perm = [self.__easy_seeds[i] for i in self._episode_rng.permutation(len(self.__easy_seeds))]
         self._medium_perm = [self.__medium_seeds[i] for i in self._episode_rng.permutation(len(self.__medium_seeds))]
         self._hard_perm = [self.__hard_seeds[i] for i in self._episode_rng.permutation(len(self.__hard_seeds))]
+
+
+        # Load topology cache if available
+        if os.path.exists("topology_cache.db") or os.path.exists("topology_cache.dir"):
+            self._topology_cache = shelve.open("topology_cache", flag="r")  # read-only
+        else:
+            self._topology_cache = {}
         
         # Learn by using increasing pools of seeds
         self._ep = 0               # episodes count
@@ -398,44 +406,54 @@ class NanoEnv(gym.Env):
         print("episode: ", self._ep, " ,seed: ", used_seed)
 
 
-        # Generate a pseudo-random but also valid vessel topology for the episode
-        new_seed = 1 + int(used_seed)
-        repeat = True
-        while repeat:
-            self._vessel_topology = self._generate_logical_topology(new_seed)
+        # ── World generation (with cache if available) ───────────────────────
+        if str(used_seed) in self._topology_cache:
+            # Cache hit: precomputed topology and free space
+            self._vessel_topology = self._topology_cache[str(used_seed)]["topology"].copy()
+            available_space       = list(self._topology_cache[str(used_seed)]["available"])
+        else:
+            # Cache miss: normal generation
+            new_seed = 1 + int(used_seed)
+            found    = False
+            while not found:
+                self._vessel_topology = self._generate_logical_topology(new_seed)
+                available_space       = main_related_component(self._vessel_topology)
+                available_space       = self._filter_by_clearance(
+                    available_space,
+                    max(self.__agent_radius, self.__target_radius)
+                )
+                new_seed += 1
+                if len(available_space) > 100:
+                    found = True
 
-            available_space = main_related_component(self._vessel_topology)
-            available_space = self._filter_by_clearance(available_space, max(self._agent_radius, self._target_radius))
+        # ── Agent and target placement (always random) ───────────────────────
+        repeat1 = True
+        while repeat1:
+            agent_int           = self.np_random.integers(0, len(available_space))
+            init_agent_location = available_space[agent_int].copy()
+            if 10 <= init_agent_location[0] <= self._size - 10 and 10 <= init_agent_location[1] <= self._size - 10:
+                repeat1 = False
 
-            new_seed += 1
-            if len(available_space) > 100:
-                # Randomly generated target and agent locations in the available space
-                repeat1 = True
-                while repeat1:
-                    agent_int = self.np_random.integers(0, len(available_space))
-                    init_agent_location = available_space[agent_int].copy()
-                    if 10 <= init_agent_location[0] <= self._size - 10 and 10 <= init_agent_location[1] <= self._size - 10 :
-                        repeat1 = False
+        self._agent_location = init_agent_location
+        available_space.pop(agent_int)
 
-                self._agent_location = init_agent_location
-                available_space.pop(agent_int)
-
-                repeat2 = True
-                to_explore = available_space.copy()
-                while repeat2 and len(to_explore) != 0:
-                    target_int = self.np_random.integers(0, len(to_explore))
-                    init_target_location = to_explore[target_int].copy()
-                    d0 = np.linalg.norm(self._agent_location - init_target_location)
-                    if d0 >= 35 and is_navigable(self._vessel_topology, self._agent_location, init_target_location, self._agent_radius):
-                        repeat2 = False
-                        self._target_location = init_target_location
-                        self.__initial_distance = d0
-                        self._best_dist = d0
-                        available_space = list(filter(lambda x: x[0] != init_target_location[0] or x[1] != init_target_location[1], available_space))
-
-                        repeat = False
-                    else: 
-                        to_explore.pop(target_int)
+        repeat2    = True
+        to_explore = available_space.copy()
+        while repeat2 and len(to_explore) != 0:
+            target_int           = self.np_random.integers(0, len(to_explore))
+            init_target_location = to_explore[target_int].copy()
+            d0                   = np.linalg.norm(self._agent_location - init_target_location)
+            if d0 >= 35 and is_navigable(self._vessel_topology, self._agent_location, init_target_location, self.__agent_radius):
+                repeat2                  = False
+                self._target_location    = init_target_location
+                self.__initial_distance  = d0
+                self._best_dist          = d0
+                available_space          = list(filter(
+                    lambda x: x[0] != init_target_location[0] or x[1] != init_target_location[1],
+                    available_space
+                ))
+            else:
+                to_explore.pop(target_int)
                 
                 
 
