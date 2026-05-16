@@ -7,12 +7,27 @@ from utils import main_related_component, is_navigable
 
 from gymnasium.envs.registration import register
 
+Difficulty = Literal["easy", "medium", "hard"]
+
 class NanoEnv(gym.Env):
 
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 30}
-    Difficulty = Literal["easy", "medium", "hard"]
 
-    def __init__(self, render_mode: str = None, difficulty: Optional[Difficulty] = None, max_v: float = 6.0, max_red: int = 8, max_white: int = 4):
+    def __init__(self, 
+        render_mode: str = None, 
+        difficulty: Optional[Difficulty] = None, 
+        max_v: float = 6.0, 
+        max_red: int = 8, 
+        max_white: int = 4
+    ):
+        """Initialize the NanoEnv environment.
+        Args:
+            render_mode: The mode for rendering the environment. Can be "human", "rgb_array" or None.
+            difficulty: The difficulty level for the learning curriculum. If None, the seeds will be drawn randomly from the whole set of seeds. If not None, it will be one of "easy", "medium" or "hard" and it will determine the seeds that will be drawn at the start of each episode. The seeds are divided into three sets of increasing difficulty and they are drawn from these sets with increasing pool sizes as the episodes go by. This allows a smooth learning curriculum for the agent.
+            max_v: The maximum velocity of the agent in cell units per second.
+            max_red: The maximum number of red cells in the environment. Red cells are obstacles that reduce the agent's velocity when it collides with them.
+            max_white: The maximum number of white cells in the environment. White cells are obstacles that reduce the agent's velocity more than red cells when it collides with them.
+        """
 
         # Introducing difficulty levels for the learning curriculum
         self.difficulty = difficulty

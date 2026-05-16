@@ -1,10 +1,10 @@
 import numpy as np
 
 def first_not_explored(grid):
-    """Finds the first empty cell in the grid that wasn't already explored. Note that 1 is for wall,
-    0 is for empty space not explored and 2 is for space already explored.
+    """Finds the first empty cell in the grid that hasn't already been explored. Note that 1 is for wall,
+    0 is for empty space (not explored yet) and 2 is for space already explored.
     Args:
-        grid: the suare grid to work on
+        grid: the square grid to work on
     Returns:
         tuple: the position of the first not yet explored cell if there is one. If there isn't any, returns (-1, -1)
     """
@@ -17,7 +17,8 @@ def first_not_explored(grid):
 
 def main_related_component(grid):
     """A function that takes a 2D grid describing a topology of an environemnt and computes the 
-    main related component as a list of positions. We use the convention 0 is empty and 1 is wall.
+    main related component as a list of positions. We use the convention 0 is empty, 1 is wall and 2 
+    is for space already explored.
     
     Args:
         grid: the square grid representing the topology
@@ -51,21 +52,12 @@ def main_related_component(grid):
 
     return result
 
-# grid = [
-#     [1, 1, 1, 1, 1, 1],
-#     [1, 0, 0, 1, 0, 1],
-#     [1, 0, 0, 1, 0, 1],
-#     [1, 1, 1, 1, 0, 1],
-#     [1, 0, 0, 0, 0, 1],
-#     [1, 1, 1, 1, 1, 1],
-# ]
 
-# print(main_related_component(grid, 6, 6))
 
 
 
 def surroundings_ok(grid, pos, radius):
-    """Checks if there isn't a wall in the radius of the position `pos` on the grid.
+    """Checks if there isn't a wall in the `radius` of the position `pos` on the grid.
 
     Args:
         grid: the square grid representing the world with the walls and the empty spaces
