@@ -422,7 +422,7 @@ class NanoEnv(gym.Env):
                 available_space       = main_related_component(self._vessel_topology)
                 available_space       = self._filter_by_clearance(
                     available_space,
-                    max(self.__agent_radius, self.__target_radius)
+                    max(self._agent_radius, self._target_radius)
                 )
                 new_seed += 1
                 if len(available_space) > 100:
@@ -445,7 +445,7 @@ class NanoEnv(gym.Env):
             target_int           = self.np_random.integers(0, len(to_explore))
             init_target_location = to_explore[target_int].copy()
             d0                   = np.linalg.norm(self._agent_location - init_target_location)
-            if d0 >= 35 and is_navigable(self._vessel_topology, self._agent_location, init_target_location, self.__agent_radius):
+            if d0 >= 35 and is_navigable(self._vessel_topology, self._agent_location, init_target_location, self._agent_radius):
                 repeat2                  = False
                 self._target_location    = init_target_location
                 self.__initial_distance  = d0
@@ -592,17 +592,17 @@ class NanoEnv(gym.Env):
         old_agent_location = self._agent_location.copy()
         new_agent_location = self._agent_location + (v_agent + 0.5 * self.__v_blood) * self.__timestep
         self._agent_location = self._manage_wall_collision(
-            self._agent_location, new_agent_location, self.__agent_radius
+            self._agent_location, new_agent_location, self._agent_radius
         )
 
         # Move blood cells (purely advected by the blood flow)
         for i in range(self._nb_red):
             new_pos          = self._red_cells[i] + self.__v_blood * self.__timestep
-            self._red_cells[i] = self._manage_wall_collision(self._red_cells[i], new_pos, self.__cell_radius)
+            self._red_cells[i] = self._manage_wall_collision(self._red_cells[i], new_pos, self._cell_radius)
 
         for i in range(self._nb_white):
             new_pos            = self._white_cells[i] + self.__v_blood * self.__timestep
-            self._white_cells[i] = self._manage_wall_collision(self._white_cells[i], new_pos, self.__cell_radius)
+            self._white_cells[i] = self._manage_wall_collision(self._white_cells[i], new_pos, self._cell_radius)
 
 
         # ── 3. REWARD COMPUTATION ─────────────────────────────────────────────────
@@ -617,13 +617,13 @@ class NanoEnv(gym.Env):
         # 3b. Cell-collision penalty — hitting blood cells slows the agent and costs reward
         beta = 0.6
         for i in range(self._nb_red):
-            if np.linalg.norm(self._red_cells[i] - self._agent_location) < self.__agent_radius + self.__cell_radius:
+            if np.linalg.norm(self._red_cells[i] - self._agent_location) < self._agent_radius + self._cell_radius:
                 self._velocity  = np.clip(self._velocity - beta, 0.0, self._max_v)
                 reward += self.__penalty_red_cell
                 break
 
         for i in range(self._nb_white):
-            if np.linalg.norm(self._white_cells[i] - self._agent_location) < self.__agent_radius + self.__cell_radius:
+            if np.linalg.norm(self._white_cells[i] - self._agent_location) < self._agent_radius + self._cell_radius:
                 self._velocity  = np.clip(self._velocity - beta - 0.1, 0.0, self._max_v)
                 reward += self.__penalty_white_cell
                 break
@@ -647,7 +647,7 @@ class NanoEnv(gym.Env):
         # ── 4. TERMINATION CONDITIONS ─────────────────────────────────────────────
 
         # 4a. Success — agent reached the target
-        if np.linalg.norm(self._agent_location - self._target_location) <= self.__agent_radius + self.__target_radius:
+        if np.linalg.norm(self._agent_location - self._target_location) <= self._agent_radius + self._target_radius:
             terminated     = True
             self._is_success = True
             reward        += 100.0
