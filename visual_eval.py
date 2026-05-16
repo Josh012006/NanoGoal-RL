@@ -12,7 +12,7 @@ model_difficulty = int(sys.argv[1])
 seed_difficulty = int(sys.argv[2])
 
 models = ["ppo_nanogoal_easy", "ppo_nanogoal_medium", "ppo_nanogoal_hard"]
-seeds = [7, 225, 775] # 165 for hardcore
+seeds = [7, 19, 775] # 165 for hardcore
 
 myEnv = env.NanoEnv(render_mode="human")
 model = PPO.load("models/" + models[model_difficulty], env=myEnv)

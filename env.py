@@ -16,9 +16,9 @@ class NanoEnv(gym.Env):
 
         # Introducing difficulty levels for the learning curriculum
         self.difficulty = difficulty
-        self.__easy_seeds = [0, 2, 3, 10, 11, 30, 32, 42, 52, 88, 101, 205, 951, 1500, 1974, 1976, 2008, 2013, 2017, 2033] 
-        self.__medium_seeds = [4, 35, 69, 82, 88, 92, 149, 167, 245, 252, 287, 301, 319, 328, 339, 728, 989, 1004, 2003, 2022]
-        self.__hard_seeds = [9, 24, 49, 66, 74, 111, 155, 185, 193, 271, 280, 315, 342, 406, 418, 530, 584, 641, 707, 709]
+        self.__easy_seeds = [0, 2, 3, 8, 10, 11, 30, 32, 42, 52, 101, 205, 951, 1500, 1974, 1976, 2006, 2013, 2017, 2033] 
+        self.__medium_seeds = [4, 35, 69, 82, 88, 92, 149, 167, 252, 287, 301, 319, 328, 339, 728, 898, 989, 1022, 2003, 2022]
+        self.__hard_seeds = [6, 24, 66, 74, 111, 155, 185, 193, 271, 280, 315, 342, 406, 418, 530, 584, 642, 707, 709, 1015]
 
         self._episode_rng = np.random.default_rng(12345)
         self._easy_perm = [self.__easy_seeds[i] for i in self._episode_rng.permutation(len(self.__easy_seeds))]
@@ -28,7 +28,7 @@ class NanoEnv(gym.Env):
         # Learn by using increasing pools of seeds
         self._ep = 0               # episodes count
         self._pool0 = 2            # initial pool's size
-        self._expand_every = 2000  # expand the pool's size by 2 every 2000 resets
+        self._expand_every = 5000 if difficulty == "hard" else 2000 # expansion frequency
 
         # Discrete representation as a grid
         self._size = 125  # grid's size
