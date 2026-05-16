@@ -19,7 +19,7 @@ model = PPO(
     n_steps=10_000
 )
 model.learn(
-    total_timesteps=12_000_000,
+    total_timesteps=30_000_000,
     tb_log_name="easy"
 )
 

@@ -9,7 +9,7 @@ model = PPO.load(
 )
 
 model.learn(
-    total_timesteps=200_000_000,  
+    total_timesteps=280_000_000,  
     tb_log_name="hard"
 )
 
