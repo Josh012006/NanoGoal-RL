@@ -131,7 +131,7 @@ def score(seed: int, environment: env.NanoEnv) -> float:
         environment._vessel_topology,
         start,
         goal,
-        environment._NanoEnv__agent_radius 
+        environment._agent_radius 
     )
 
 
