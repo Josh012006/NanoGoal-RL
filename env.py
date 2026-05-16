@@ -31,15 +31,17 @@ class NanoEnv(gym.Env):
             max_white: The maximum number of white cells in the environment. White cells are obstacles that reduce the agent's velocity more than red cells when it collides with them.
         """
 
+        # Introducing difficulty levels for the learning curriculum
+        self.difficulty = difficulty
+        
+        self._episode_rng = np.random.default_rng(99999)
+
+        
         if os.path.exists("seeds.json"):
-            # Introducing difficulty levels for the learning curriculum
-            self.difficulty = difficulty
 
             # Load the classified seeds from the JSON file
             with open("seeds.json") as f:
                 _all_seeds = json.load(f)
-
-            self._episode_rng = np.random.default_rng(99999)
 
             # Take 40% of the seeds from each category to form the training pools. The rest will be ignored for training but they are still valid seeds that can be used for evaluation.
             def _sample_category(seeds_list, pct=0.40):
