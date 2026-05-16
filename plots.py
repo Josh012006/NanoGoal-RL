@@ -1,5 +1,5 @@
 # A file to help plot different relationships in the results of the models' testing.
-# Was generated with CHATGPT.
+# Was generated with AI.
 
 import numpy as np
 import pandas as pd
