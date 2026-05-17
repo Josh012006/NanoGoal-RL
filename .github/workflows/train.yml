@@ -35,6 +35,7 @@ jobs:
             echo "train_easy=false" >> "$GITHUB_OUTPUT"
             echo "train_medium=false" >> "$GITHUB_OUTPUT"
             echo "train_hard=false" >> "$GITHUB_OUTPUT"
+            echo "generate_cache=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -45,6 +46,7 @@ jobs:
               train_easy) echo "train_easy=$value" >> "$GITHUB_OUTPUT" ;;
               train_medium) echo "train_medium=$value" >> "$GITHUB_OUTPUT" ;;
               train_hard) echo "train_hard=$value" >> "$GITHUB_OUTPUT" ;;
+              generate_cache) echo "generate_cache=$value" >> "$GITHUB_OUTPUT" ;;
             esac
           done < "$FLAG_FILE"
 
@@ -74,7 +76,11 @@ jobs:
         if: steps.read_flag.outputs.train == 'true'
         run: |
           set -e
-          if [ ! -f "topology_cache.dir" ] && [ ! -f "topology_cache.dat" ] && [ ! -f "topology_cache.db" ]; then
+          if [ "${{ steps.read_flag.outputs.generate_cache }}" = "true" ]; then
+            echo "generate_cache=true → forcing cache regeneration..."
+            $VENV/python precompute_cache.py
+            echo "Cache regenerated."
+          elif [ ! -f "topology_cache.dir" ] && [ ! -f "topology_cache.dat" ] && [ ! -f "topology_cache.db" ] && [ ! -f "topology_cache" ]; then
             echo "Topology cache not found — running precompute_cache.py..."
             $VENV/python precompute_cache.py
             echo "Cache generated."
@@ -131,6 +137,7 @@ jobs:
             echo "train_easy=false"
             echo "train_medium=false"
             echo "train_hard=false"
+            echo "generate_cache=false"
           } > "$FLAG_FILE"
 
           git config user.name "github-actions[bot]"

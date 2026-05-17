@@ -66,7 +66,7 @@ class NanoEnv(gym.Env):
 
 
         # Load topology cache if available
-        if os.path.exists("topology_cache.db") or os.path.exists("topology_cache.dir"):
+        if os.path.exists("topology_cache") or os.path.exists("topology_cache.db") or os.path.exists("topology_cache.dir"):
             self._topology_cache = shelve.open("topology_cache", flag="r")  # read-only
         else:
             self._topology_cache = {}
