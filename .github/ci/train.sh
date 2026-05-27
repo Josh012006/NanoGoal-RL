@@ -35,7 +35,7 @@ send_email() {
   curl -s -o /dev/null -X POST https://api.sendgrid.com/v3/mail/send \
     -H "Authorization: Bearer $SENDGRID_API_KEY" \
     -H "Content-Type: application/json" \
-    -d "{\"personalizations\":[{\"to\":[{\"email\":\"$NOTIFY_EMAIL\"}]}],\"from\":{\"email\":\"$FROM_EMAIL\"},\"subject\":\"$subject\",\"content\":[{\"type\":\"text/plain\",\"value\":\"$escaped_body\"}]}"
+    -d "{\"personalizations\":[{\"to\":[{\"email\":\"$NOTIFY_EMAIL\"}]}],\"from\":{\"email\":\"$FROM_EMAIL\"},\"subject\":\"$subject\",\"content\":[{\"type\":\"text/plain\",\"value\":\"$escaped_body\"}]}" || true
 }
 
 # ── Read flags ────────────────────────────────────────────────────────────────
