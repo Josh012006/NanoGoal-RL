@@ -3,8 +3,6 @@
 # Runs inside a tmux session on the droplet.
 # Usage: bash .github/ci/train.sh <flag_file> <sha> <branch> <work_dir>
 
-set -e
-
 FLAG_FILE="$1"
 SHA="$2"
 BRANCH="$3"
@@ -52,6 +50,7 @@ while IFS='=' read -r key value; do
   esac
 done < "$FLAG_FILE"
 
+TRAINING_FAILED=false
 log "Flags → easy=$TRAIN_EASY medium=$TRAIN_MEDIUM hard=$TRAIN_HARD"
 send_email "🚀 NanoGoal training started ($SHA)" \
   "Training started on branch $BRANCH.\n\nFlags:\n- easy=$TRAIN_EASY\n- medium=$TRAIN_MEDIUM\n- hard=$TRAIN_HARD\n\nCommit: $SHA"
@@ -144,11 +143,12 @@ if [ "$TRAIN_EASY" = "true" ]; then
     send_email "❌ NanoGoal — easy training FAILED" \
       "Easy training failed.\nCommit: $SHA\n\nLast logs:\n$(tail -50 logs/train_easy.log)"
     log "Easy training FAILED."
+    TRAINING_FAILED=true
   fi
 fi
 
 # ── Train medium ──────────────────────────────────────────────────────────────
-if [ "$TRAIN_MEDIUM" = "true" ]; then
+if [ "$TRAIN_MEDIUM" = "true" ] && [ "${TRAINING_FAILED:-false}" = "false" ]; then
   log "Starting medium training..."
   send_email "🟡 NanoGoal — medium training started" "Medium training started.\nCommit: $SHA"
 
@@ -169,11 +169,12 @@ if [ "$TRAIN_MEDIUM" = "true" ]; then
     send_email "❌ NanoGoal — medium training FAILED" \
       "Medium training failed.\nCommit: $SHA\n\nLast logs:\n$(tail -50 logs/train_medium.log)"
     log "Medium training FAILED."
+    TRAINING_FAILED=true
   fi
 fi
 
 # ── Train hard ────────────────────────────────────────────────────────────────
-if [ "$TRAIN_HARD" = "true" ]; then
+if [ "$TRAIN_HARD" = "true" ] && [ "${TRAINING_FAILED:-false}" = "false" ]; then
   log "Starting hard training..."
   send_email "🔴 NanoGoal — hard training started" "Hard training started.\nCommit: $SHA"
 
