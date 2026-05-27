@@ -11,7 +11,7 @@ permissions:
 jobs:
   train:
     runs-on: [self-hosted, linux, cpu]
-    timeout-minutes: 30
+    timeout-minutes: 720
 
     env:
       VENV: .venv/bin
@@ -116,32 +116,20 @@ jobs:
       - name: Launch training in background
         if: steps.read_flag.outputs.train == 'true'
         run: |
-          set -e
-
           WORK_DIR="$(pwd)"
-          FLAG_FILE="$WORK_DIR/.github/ci/train.flag"
-          SHA="${{ github.sha }}"
-          BRANCH="${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}"
-
           chmod +x .github/ci/train.sh
 
-          # Export variables needed by train.sh for git push and gh issue
-          export GITHUB_TOKEN="${{ github.token }}"
-          export GITHUB_REPOSITORY="${{ github.repository }}"
-          export GH_TOKEN="${{ github.token }}"
-
-          # Launch train.sh detached from the current shell
-          # nohup ensures it survives after the GitHub Actions job ends
-          nohup bash .github/ci/train.sh \
-            "$FLAG_FILE" \
-            "$SHA" \
-            "$BRANCH" \
+          nohup env \
+            GITHUB_TOKEN="${{ github.token }}" \
+            GITHUB_REPOSITORY="${{ github.repository }}" \
+            GH_TOKEN="${{ github.token }}" \
+            bash .github/ci/train.sh \
+            "$WORK_DIR/.github/ci/train.flag" \
+            "${{ github.sha }}" \
+            "${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}" \
             "$WORK_DIR" \
             > "$WORK_DIR/logs/train_session.log" 2>&1 &
 
-          TRAIN_PID=$!
-          echo $TRAIN_PID > "$WORK_DIR/logs/train.pid"
-          disown $TRAIN_PID
-
-          echo "Training launched (PID $TRAIN_PID)."
+          echo $! > "$WORK_DIR/logs/train.pid"
+          echo "Training launched (PID $(cat $WORK_DIR/logs/train.pid))."
           echo "Monitor with: tail -f $WORK_DIR/logs/train_session.log"
