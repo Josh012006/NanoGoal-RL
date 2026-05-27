@@ -126,7 +126,23 @@ if [ "$TRAIN_EASY" = "true" ]; then
   log "Starting easy training..."
   send_email "🟢 NanoGoal — easy training started" "Easy training started.\nCommit: $SHA"
 
-  if $VENV/python train_easy.py > logs/train_easy.log 2>&1; then
+  log "About to launch training..."
+  log "Python executable: $VENV/python"
+
+  ls -l "$VENV/python"
+  pwd
+  which python3
+
+  "$VENV/python" --version
+
+  touch logs/train_easy.log
+
+  "$VENV/python" -u train_easy.py >> logs/train_easy.log 2>&1
+  EXIT_CODE=$?
+
+  log "Training exited with code $EXIT_CODE"
+
+  if [ "$EXIT_CODE" -eq 0 ]; then
     log "Easy training complete."
     log "Running easy evaluations..."
     $VENV/python eval.py 0 0 >> logs/train_easy.log 2>&1
