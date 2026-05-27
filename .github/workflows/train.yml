@@ -11,7 +11,7 @@ permissions:
 jobs:
   train:
     runs-on: [self-hosted, linux, cpu]
-    timeout-minutes: 720
+    timeout-minutes: 30
 
     env:
       VENV: .venv/bin
@@ -73,10 +73,14 @@ jobs:
       - name: Clean up previous training artifacts
         if: steps.read_flag.outputs.train == 'true'
         run: |
-          # Kill any stale training session
-          tmux kill-session -t nanogoal_training 2>/dev/null || true
+          # Kill any stale training process
+          if [ -f logs/train.pid ]; then
+            OLD_PID=$(cat logs/train.pid)
+            kill "$OLD_PID" 2>/dev/null || true
+            echo "Killed stale training process (PID $OLD_PID)."
+          fi
           # Remove previous training logs and status files
-          rm -f logs/train_*.log logs/train_*.DONE logs/train_*.FAILED logs/train_session.log
+          rm -f logs/train_*.log logs/train_*.DONE logs/train_*.FAILED logs/train_session.log logs/train.pid
           echo "Cleaned up previous training artifacts."
 
       - name: Install dependencies
@@ -111,8 +115,6 @@ jobs:
 
       - name: Launch training in background
         if: steps.read_flag.outputs.train == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -e
 
@@ -123,17 +125,23 @@ jobs:
 
           chmod +x .github/ci/train.sh
 
-          # Launch train.sh in a detached tmux session
-          # Pass GITHUB_TOKEN and GITHUB_REPOSITORY explicitly since tmux
-          # does not inherit the GitHub Actions environment
-          tmux new-session -d -s nanogoal_training \
-            "cd '$WORK_DIR' && \
-             GITHUB_TOKEN='${{ github.token }}' \
-             GITHUB_REPOSITORY='${{ github.repository }}' \
-             GH_TOKEN='${{ github.token }}' \
-             bash .github/ci/train.sh '$FLAG_FILE' '$SHA' '$BRANCH' '$WORK_DIR' \
-             > '$WORK_DIR/logs/train_session.log' 2>&1"
+          # Export variables needed by train.sh for git push and gh issue
+          export GITHUB_TOKEN="${{ github.token }}"
+          export GITHUB_REPOSITORY="${{ github.repository }}"
+          export GH_TOKEN="${{ github.token }}"
 
-          echo "Training launched in tmux session 'nanogoal_training'."
-          echo "Monitor with:  tmux attach -t nanogoal_training"
-          echo "Or:            tail -f $WORK_DIR/logs/train_session.log"
+          # Launch train.sh detached from the current shell
+          # nohup ensures it survives after the GitHub Actions job ends
+          nohup bash .github/ci/train.sh \
+            "$FLAG_FILE" \
+            "$SHA" \
+            "$BRANCH" \
+            "$WORK_DIR" \
+            > "$WORK_DIR/logs/train_session.log" 2>&1 &
+
+          TRAIN_PID=$!
+          echo $TRAIN_PID > "$WORK_DIR/logs/train.pid"
+          disown $TRAIN_PID
+
+          echo "Training launched (PID $TRAIN_PID)."
+          echo "Monitor with: tail -f $WORK_DIR/logs/train_session.log"
