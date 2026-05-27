@@ -40,7 +40,8 @@ if __name__ == "__main__":
         env=vec_env,
         verbose=1,
         tensorboard_log="./logs/",
-        n_steps=n_steps
+        n_steps=n_steps,
+        batch_size=200
     )
 
     model.learn(
