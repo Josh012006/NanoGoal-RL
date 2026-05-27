@@ -127,18 +127,37 @@ if [ "$TRAIN_EASY" = "true" ]; then
   send_email "🟢 NanoGoal — easy training started" "Easy training started.\nCommit: $SHA"
 
   log "About to launch training..."
-  log "Python executable: $VENV/python"
 
-  ls -l "$VENV/python"
-  pwd
-  which python3
+  log "WORK_DIR=$WORK_DIR"
+  log "VENV=$VENV"
 
-  "$VENV/python" --version
+  log "Checking venv python..."
+  ls -l "$VENV/python" || {
+    log "❌ VENV python NOT FOUND"
+    exit 1
+  }
+
+  log "Checking python version..."
+  "$VENV/python" -c "import sys; print(sys.executable); print(sys.version)" || {
+    log "❌ Python execution failed"
+    exit 1
+  }
 
   touch logs/train_easy.log
 
-  "$VENV/python" -u train_easy.py >> logs/train_easy.log 2>&1
-  EXIT_CODE=$?
+  log "Listing project root:"
+  ls -la
+
+  log "Checking train_easy.py exists:"
+  ls -l train_easy.py || {
+    log "❌ train_easy.py NOT FOUND"
+    exit 1
+  }
+
+  log "Launching train_easy.py..."
+
+  "$VENV/python" -u train_easy.py 2>&1 | tee logs/train_easy.log
+  EXIT_CODE=${PIPESTATUS[0]}
 
   log "Training exited with code $EXIT_CODE"
 
