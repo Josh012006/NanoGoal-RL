@@ -2,16 +2,24 @@ import os
 import env
 
 from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3 import PPO
 from checkpoint_callback import KeepLastTwoCheckpoints
 
+
+# Automatically detect the number of available CPUs
 n_envs = min(os.cpu_count(), 8)
-n_steps = 10_000 // n_envs
+n_steps = 20_000 // n_envs  # increased to reduce backprop proportion vs rollout
 print(f"Running with {n_envs} parallel environments ({n_steps} steps each)")
 
+def make_env():
+    return env.NanoEnv(difficulty="medium")
+
+# SubprocVecEnv spawns one process per env, enabling true CPU parallelism
 vec_env = make_vec_env(
-    lambda: env.NanoEnv(difficulty="medium"),
-    n_envs=n_envs
+    make_env,
+    n_envs=n_envs,
+    vec_env_cls=SubprocVecEnv
 )
 
 checkpoint_callback = KeepLastTwoCheckpoints(
@@ -23,11 +31,11 @@ checkpoint_callback = KeepLastTwoCheckpoints(
 model = PPO.load(
     "models/ppo_nanogoal_easy",
     env=vec_env,
-    custom_objects={"n_steps": n_steps}
+    custom_objects={"n_steps": n_steps, "learning_rate": 1e-4}
 )
 
 model.learn(
-    total_timesteps=100_000_000, 
+    total_timesteps=150_000_000,
     reset_num_timesteps=False,
     tb_log_name="medium",
     callback=checkpoint_callback

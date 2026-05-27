@@ -11,17 +11,37 @@ permissions:
 jobs:
   train:
     runs-on: [self-hosted, linux, cpu]
-    timeout-minutes: 7200
+    timeout-minutes: 720
 
     env:
       VENV: .venv/bin
 
     steps:
+      - name: Save topology cache
+        run: |
+          rm -rf /tmp/topology_cache_backup
+          mkdir -p /tmp/topology_cache_backup
+          if ls topology_cache* 2>/dev/null | grep -q .; then
+            cp topology_cache* /tmp/topology_cache_backup/
+            echo "Topology cache saved to /tmp."
+          else
+            echo "No topology cache found — nothing to save."
+          fi
+
       - name: Fetch code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
+
+      - name: Restore topology cache
+        run: |
+          if ls /tmp/topology_cache_backup/topology_cache* 2>/dev/null | grep -q .; then
+            cp /tmp/topology_cache_backup/topology_cache* .
+            echo "Topology cache restored."
+          else
+            echo "No topology cache to restore."
+          fi
 
       - name: Read train.flag
         id: read_flag
@@ -32,9 +52,6 @@ jobs:
 
           if [ ! -f "$FLAG_FILE" ]; then
             echo "train=false" >> "$GITHUB_OUTPUT"
-            echo "train_easy=false" >> "$GITHUB_OUTPUT"
-            echo "train_medium=false" >> "$GITHUB_OUTPUT"
-            echo "train_hard=false" >> "$GITHUB_OUTPUT"
             echo "generate_cache=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -43,9 +60,6 @@ jobs:
             [ -z "$key" ] && continue
             case "$key" in
               train) echo "train=$value" >> "$GITHUB_OUTPUT" ;;
-              train_easy) echo "train_easy=$value" >> "$GITHUB_OUTPUT" ;;
-              train_medium) echo "train_medium=$value" >> "$GITHUB_OUTPUT" ;;
-              train_hard) echo "train_hard=$value" >> "$GITHUB_OUTPUT" ;;
               generate_cache) echo "generate_cache=$value" >> "$GITHUB_OUTPUT" ;;
             esac
           done < "$FLAG_FILE"
@@ -55,6 +69,15 @@ jobs:
         run: |
           echo "Training disabled → stopping job"
           exit 0
+
+      - name: Clean up previous training artifacts
+        if: steps.read_flag.outputs.train == 'true'
+        run: |
+          # Kill any stale training session
+          tmux kill-session -t nanogoal_training 2>/dev/null || true
+          # Remove previous training logs and status files
+          rm -f logs/train_*.log logs/train_*.DONE logs/train_*.FAILED logs/train_session.log
+          echo "Cleaned up previous training artifacts."
 
       - name: Install dependencies
         if: steps.read_flag.outputs.train == 'true'
@@ -68,9 +91,7 @@ jobs:
         if: steps.read_flag.outputs.train == 'true'
         run: |
           set -e
-          mkdir -p plots/easy plots/medium plots/hard
-          rm -rf logs
-          mkdir -p logs
+          mkdir -p plots/easy plots/medium plots/hard logs
 
       - name: Precompute topology cache
         if: steps.read_flag.outputs.train == 'true'
@@ -88,106 +109,31 @@ jobs:
             echo "Topology cache already exists — skipping precompute."
           fi
 
-      - name: Train easy model
-        if: steps.read_flag.outputs.train == 'true' && steps.read_flag.outputs.train_easy == 'true'
-        run: |
-          set -e
-          $VENV/python train_easy.py
-          $VENV/python eval.py 0 0
-          $VENV/python eval.py 0 1
-          $VENV/python eval.py 0 2
-          $VENV/python saving_plots.py results/easy/ppo_eval_easy.csv plots/easy 0
-          $VENV/python saving_plots.py results/easy/ppo_eval_medium.csv plots/easy 1 0
-          $VENV/python saving_plots.py results/easy/ppo_eval_hard.csv plots/easy 2 0
-
-      - name: Train medium model
-        if: steps.read_flag.outputs.train == 'true' && steps.read_flag.outputs.train_medium == 'true'
-        run: |
-          set -e
-          $VENV/python train_medium.py
-          $VENV/python eval.py 1 0
-          $VENV/python eval.py 1 1
-          $VENV/python eval.py 1 2
-          $VENV/python saving_plots.py results/medium/ppo_eval_easy.csv plots/medium 0 0
-          $VENV/python saving_plots.py results/medium/ppo_eval_medium.csv plots/medium 1
-          $VENV/python saving_plots.py results/medium/ppo_eval_hard.csv plots/medium 2 0
-
-      - name: Train hard model
-        if: steps.read_flag.outputs.train == 'true' && steps.read_flag.outputs.train_hard == 'true'
-        run: |
-          set -e
-          $VENV/python train_hard.py
-          $VENV/python eval.py 2 0
-          $VENV/python eval.py 2 1
-          $VENV/python eval.py 2 2
-          $VENV/python saving_plots.py results/hard/ppo_eval_easy.csv plots/hard 0 0
-          $VENV/python saving_plots.py results/hard/ppo_eval_medium.csv plots/hard 1 0
-          $VENV/python saving_plots.py results/hard/ppo_eval_hard.csv plots/hard 2
-
-      - name: Commit & push changes
-        if: steps.read_flag.outputs.train == 'true'
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          set -e
-
-          FLAG_FILE=".github/ci/train.flag"
-          {
-            echo "train=false"
-            echo "train_easy=false"
-            echo "train_medium=false"
-            echo "train_hard=false"
-            echo "generate_cache=false"
-          } > "$FLAG_FILE"
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          SHA="$GITHUB_SHA"
-          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
-            SHA="$(jq -r .pull_request.head.sha "$GITHUB_EVENT_PATH")"
-          fi
-
-          # Stage everything then explicitly exclude topology cache files
-          git add .
-          git reset topology_cache.dir topology_cache.bak topology_cache.dat topology_cache.db 2>/dev/null || true
-
-          if [ -z "$(git status --porcelain)" ]; then
-            echo "No changes to commit."
-            exit 0
-          fi
-
-          git commit -m "feat: Trained models after commit of ID: $SHA [skip ci]"
-
-          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
-            git push \
-              https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git \
-              "HEAD:${GITHUB_REF_NAME}"
-            exit 0
-          fi
-
-          IS_FORK="$(jq -r .pull_request.head.repo.fork "$GITHUB_EVENT_PATH")"
-          if [ "$IS_FORK" = "true" ]; then
-            echo "PR from fork: skipping push."
-            exit 0
-          fi
-
-          git push \
-            https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git \
-            "HEAD:${GITHUB_HEAD_REF}"
-
-      - name: Create issue
+      - name: Launch training in background
         if: steps.read_flag.outputs.train == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
 
-          SHA="$GITHUB_SHA"
-          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
-            SHA="$(jq -r .pull_request.head.sha "$GITHUB_EVENT_PATH")"
-          fi
+          WORK_DIR="$(pwd)"
+          FLAG_FILE="$WORK_DIR/.github/ci/train.flag"
+          SHA="${{ github.sha }}"
+          BRANCH="${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}"
 
-          gh issue create \
-            --title "Training finished for $SHA" \
-            --body $'- [ ] Generate and review training metrics\n- [ ] Validate model performance\n- [ ] Make video demos of the models performance\n- [ ] Update README\n\nModels trained from commit: '"$SHA"
+          chmod +x .github/ci/train.sh
+
+          # Launch train.sh in a detached tmux session
+          # Pass GITHUB_TOKEN and GITHUB_REPOSITORY explicitly since tmux
+          # does not inherit the GitHub Actions environment
+          tmux new-session -d -s nanogoal_training \
+            "cd '$WORK_DIR' && \
+             GITHUB_TOKEN='${{ github.token }}' \
+             GITHUB_REPOSITORY='${{ github.repository }}' \
+             GH_TOKEN='${{ github.token }}' \
+             bash .github/ci/train.sh '$FLAG_FILE' '$SHA' '$BRANCH' '$WORK_DIR' \
+             > '$WORK_DIR/logs/train_session.log' 2>&1"
+
+          echo "Training launched in tmux session 'nanogoal_training'."
+          echo "Monitor with:  tmux attach -t nanogoal_training"
+          echo "Or:            tail -f $WORK_DIR/logs/train_session.log"
