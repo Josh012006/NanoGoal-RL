@@ -1,5 +1,5 @@
 train=true
-train_easy=true
-train_medium=false
+train_easy=false
+train_medium=true
 train_hard=false
 generate_cache=false
