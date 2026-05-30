@@ -87,23 +87,23 @@ That behavior was caused by two main things :
 
 So I did some fine tuning to improve its performance.
 
-The first step was to review the way the environments were chosen in the training process. Fortunately, I had already programmed the environnement so that a specific episode could be entirely reproductible by just passing a seed at the reset time. So I took the time to select : 
-- 20 seeds I considered easy mainly because the agent only had to make a straight line to reach the target
-- 20 seeds I considered medium. Here the agent only had to learn how to turn around a wall once to see the target more easily
-- 20 seeds that are really hard. With those seeds, the agent not only had to cover large distance most of the times but he also had a lot of turns to take around walls in order to achieve the goal
-And then I decided of a repartition for the different steps of learning : 
+The first step was to review the way the environments were chosen in the training process. Fortunately, I had already programmed the environnement so that a specific episode could be entirely reproductible by just passing a seed at the reset time. Instead of manually picking seeds, I wrote a script (`classify_seeds.py`) that automatically scores 10,000 seeds using the A* algorithm on the discrete grid. For each seed, A* computes the optimal path cost between the agent and the target, taking the agent radius into account to avoid cells too close to walls. Seeds where no path exists are discarded. The remaining reachable seeds are then automatically partitioned into three difficulty categories by percentile (33rd and 67th), replacing the previous subjective manual selection with an objective navigational difficulty measure.
+
+And then I decided of a repartition for the different steps of learning :
 - easy : 100% easy
 - medium : 20% easy and 80% medium
 - hard : 10% easy, 20% medium and 70% hard
 
 The second step was to fix the way the environments or more precisely the seeds were varying during the training sessions. For that, I used pools of seeds. What I did was I restreined the number of seeds used at different times of the training.
-First I started with 2 seeds from the set of seeds for the current difficulty and each 2_000 episodes (approximatively 1_200_000 timesteps), I doubled the size of the pool. What it did was that it made the learning steady and added more stability
-to the way the algorithm was infering the policy.
+I started with a pool of 4 seeds from the set of seeds for the current difficulty and doubled the size of the pool at regular intervals — every 700 episodes for easy, 1500 for medium, and 3000 for hard. This made learning steady and added more stability to the way the algorithm was inferring the policy.
+
+Only 40% of the classified seeds per category are used for training, sampled randomly. The remaining 60% form a held-out test set used exclusively for evaluation in `eval.py`, ensuring that the reported performance metrics reflect genuine generalization and not memorization of training environments.
 
 ### What changed in v2
 
 Several infrastructure and training improvements were made for this version:
 
+- **Automatic seed classification with A***: seeds are now classified automatically using the A* algorithm on the discrete grid instead of manual selection. 10,000 seeds are scored by optimal path length, unreachable ones are discarded, and the rest are partitioned into easy/medium/hard by percentile.
 - **Precomputed topology cache**: vessel topologies and free spaces are now precomputed once and stored on disk. This makes episode resets nearly instant instead of recomputing expensive Perlin noise maps at each episode, significantly reducing overhead.
 - **Parallel environments**: training now uses `SubprocVecEnv` to run 2 environments in parallel (one per CPU), doubling the data collection throughput. The number of environments is detected automatically from the available CPU count.
 - **Larger rollout buffer**: `n_steps` was doubled to 20_000 per environment to reduce the proportion of time spent in backpropagation relative to rollout collection, keeping both CPUs more consistently busy.
@@ -519,14 +519,14 @@ The results will appear as CSV files in the results folder.
 
 Vizualize trajectories concerning the performances for the 300 test episodes:
 ```bash
-python3 plots.py <csv_file_path>
+python plots.py <csv_file_path>
 ```
 
 <br />
 
 Launch an episode with visual rendering with the trained agent:
 ```bash
-python3 visual_eval.py <difficulty_the_model_was_trained_for> <difficulty_of_the_world_seed>
+python visual_eval.py <difficulty_the_model_was_trained_for> <difficulty_of_the_world_seed>
 ```
 where : 
 - difficulty_the_model_was_trained_for : 0 for easy, 1 for medium and 2 for hard
