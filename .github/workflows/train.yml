@@ -73,13 +73,11 @@ jobs:
       - name: Clean up previous training artifacts
         if: steps.read_flag.outputs.train == 'true'
         run: |
-          # Kill any stale training process
           if [ -f logs/train.pid ]; then
             OLD_PID=$(cat logs/train.pid)
             kill "$OLD_PID" 2>/dev/null || true
             echo "Killed stale training process (PID $OLD_PID)."
           fi
-          # Remove previous training logs and status files
           rm -f logs/train_*.log logs/train_*.DONE logs/train_*.FAILED logs/train_session.log logs/train.pid
           echo "Cleaned up previous training artifacts."
 
@@ -119,7 +117,9 @@ jobs:
           WORK_DIR="$(pwd)"
           chmod +x .github/ci/train.sh
 
-          nohup env \
+          # setsid creates a new session completely detached from the GitHub Actions shell
+          # The training process survives after the job ends
+          setsid env \
             GITHUB_TOKEN="${{ github.token }}" \
             GITHUB_REPOSITORY="${{ github.repository }}" \
             GH_TOKEN="${{ github.token }}" \

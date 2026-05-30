@@ -50,9 +50,8 @@ myEnv = env.NanoEnv()
 model = PPO.load("models/ppo_nanogoal_" + difficulty, env=myEnv)
 
 
-Path("results").mkdir(parents=True, exist_ok=True)
-
 folder = difficulty
+Path("results/" + folder).mkdir(parents=True, exist_ok=True)
 termination = "easy" if difficulty_mode == 0 else "medium" if difficulty_mode == 1 else "hard" if difficulty_mode == 2 else "mix"
 with open("results/" + folder + "/ppo_eval_" + termination + ".csv", "w", newline="") as f:
     writer = csv.writer(f)

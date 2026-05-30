@@ -1,18 +1,18 @@
 # The agent's behavior over different difficulty levels
 <p align="center">
-  <img src="public/demo_easy.gif" alt="Demo">
+  <img src="public/easy/demo_easy.gif" alt="Demo">
   <br>
   <em>Demonstration of an easy level using a model trained for the easy mode.</em>
 </p>
 
 <p align="center">
-  <img src="public/demo_medium.gif" alt="Demo">
+  <img src="public/medium/demo_medium.gif" alt="Demo">
   <br>
   <em>Demonstration of a medium level using a model trained for the medium mode.</em>
 </p>
 
 <p align="center">
-  <img src="public/demo_hard.gif" alt="Demo">
+  <img src="public/hard/demo_hard.gif" alt="Demo">
   <br>
   <em>Demonstration of a hard level using a model trained for the hard mode.</em>
 </p>
@@ -100,6 +100,15 @@ The second step was to fix the way the environments or more precisely the seeds 
 First I started with 2 seeds from the set of seeds for the current difficulty and each 2_000 episodes (approximatively 1_200_000 timesteps), I doubled the size of the pool. What it did was that it made the learning steady and added more stability
 to the way the algorithm was infering the policy.
 
+### What changed in v2
+
+Several infrastructure and training improvements were made for this version:
+
+- **Precomputed topology cache**: vessel topologies and free spaces are now precomputed once and stored on disk. This makes episode resets nearly instant instead of recomputing expensive Perlin noise maps at each episode, significantly reducing overhead.
+- **Parallel environments**: training now uses `SubprocVecEnv` to run 2 environments in parallel (one per CPU), doubling the data collection throughput. The number of environments is detected automatically from the available CPU count.
+- **Larger rollout buffer**: `n_steps` was doubled to 20_000 per environment to reduce the proportion of time spent in backpropagation relative to rollout collection, keeping both CPUs more consistently busy.
+- **Curriculum learning expanded**: the seed pools now draw from a much larger classified set (40% of all classified seeds per category), giving the agent significantly more environment diversity as training progresses.
+- **Automated CI/CD training pipeline**: training is now triggered via GitHub Actions and runs on a self-hosted Digital Ocean droplet. The pipeline handles dependency installation, cache management, training, evaluation, plot generation, and commits results automatically. Email notifications are sent at key training milestones via SendGrid.
 
 ## The results of the training (see `eval.py` for the evaluation code)
 
@@ -107,11 +116,33 @@ When all the changes were done, I started training the model. After each trainin
 and preventing me from actually understanding and assessing the model's quality.
 
 ### Easy mode training
-It lasted **12_000_000 timesteps**. That was **10 hours** in real life. After that stage, **Billy** was able to succeed for almost all the easy worlds of the test set. I was really proud of him. Here were the statistics : 
+It lasted **50_000_000 timesteps**. That was approximately **2.4 days** in real life. After that stage, **Billy** was able to succeed for more than half of the easy worlds of the test set. Here were the statistics :
+
 <p align="center">
-  <img src="public/learning_easy.png" width="800" alt="the reward mean during learning"><br>
+  <img src="public/easy/reward_mean.png" width="800" alt="the reward mean during learning"><br>
   <u><em>Evolution of reward during learning episodes</em></u>
 </p>
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="public/easy/success_rate.png" width="800" alt="success rate during learning"><br>
+      <u><em>Evolution of success rate during learning episodes</em></u>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="public/easy/explained_variance.png" width="800" alt="explained variance during learning"><br>
+      <u><em>Evolution of explained variance during learning — stays consistently above 0.92, indicating the value function learned well</em></u>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="public/easy/entropy_loss.png" width="800" alt="entropy loss during learning"><br>
+      <u><em>Evolution of entropy — rises as the pool of seeds expands and the agent explores more diverse strategies</em></u>
+    </td>
+  </tr>
+</table>
 
 <br />
 
@@ -215,9 +246,9 @@ So I tested **Toddler Billy** on medium and hard tests sets. I only present here
 <br />
 
 ### Medium mode training
-I trained the easy model for another **30_000_000 timesteps**. It lasted **18 hours** in real life. Here were the statistics : 
+I trained the easy model for another **100_000_000 timesteps**. Here were the statistics : 
 <p align="center">
-  <img src="public/learning_medium.png" width="800" alt="the reward mean during learning"><br>
+  <img src="public/medium/reward_mean.png" width="800" alt="the reward mean during learning"><br>
   <u><em>Evolution of reward during learning episodes</em></u>
 </p>
 
@@ -260,7 +291,7 @@ I trained the easy model for another **30_000_000 timesteps**. It lasted **18 ho
 </table>
 
 
-This time I tested **Middle schooler Billy** on easy and hard tests sets too. We can clearly see more precision on the easy mode and even a somewhat satisfying performance on hard levels. But it still needs some improvements for teh hard level. And that's what we are doing next.
+This time I tested **Middle schooler Billy** on easy and hard tests sets too. We can clearly see more precision on the easy mode and even a somewhat satisfying performance on hard levels. But it still needs some improvements for the hard level. And that's what we are doing next.
 
 **Test of the model trained for medium mode on easy mode worlds**
 
@@ -322,9 +353,9 @@ This time I tested **Middle schooler Billy** on easy and hard tests sets too. We
 <br />
 
 ### Hard mode training
-For the last one I added **78_000_000 timesteps**. That was **1 day 8 hours** in real life. Here were the statistics : 
+For the last one I added **280_000_000 timesteps**. Here were the statistics : 
 <p align="center">
-  <img src="public/learning_hard.png" width="800" alt="the reward mean during learning"><br>
+  <img src="public/hard/reward_mean.png" width="800" alt="the reward mean during learning"><br>
   <u><em>Evolution of reward during learning episodes</em></u>
 </p>
 
@@ -442,17 +473,17 @@ pip install -r requirements.txt
 
 Train the model for easy mode:
 ```bash
-python3 train_easy.py
+python train_easy.py
 ```
 
 Train the model for medium mode:
 ```bash
-python3 train_medium.py
+python train_medium.py
 ```
 
 Train the model for hard mode:
 ```bash
-python3 train_hard.py
+python train_hard.py
 ```
 
 <br />
@@ -460,26 +491,26 @@ python3 train_hard.py
 Vizualize the learning statistics for easy mode:
 
 ```bash
-python3 -m tensorboard.main --logdir logs/<easy_logs_folder>
+tensorboard --logdir logs/<easy_logs_folder>
 ```
 
 Vizualize the learning statistics for medium mode:
 
 ```bash
-python3 -m tensorboard.main --logdir logs/<medium_logs_folder>
+tensorboard --logdir logs/<medium_logs_folder>
 ```
 
 Vizualize the learning statistics for hard mode:
 
 ```bash
-python3 -m tensorboard.main --logdir logs/<hard_logs_folder>
+tensorboard --logdir logs/<hard_logs_folder>
 ```
 
 <br />
 
 Test a trained model over 100 episodes:
 ```bash
-python3 eval.py <difficulty_the_model_was_trained_for> <difficulty_of_the_worlds_seeds>
+python eval.py <difficulty_the_model_was_trained_for> <difficulty_of_the_worlds_seeds>
 ```
 where : 
 - difficulty_the_model_was_trained_for : 0 for easy, 1 for medium and 2 for hard

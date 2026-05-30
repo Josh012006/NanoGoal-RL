@@ -1,6 +1,6 @@
 #!/bin/bash
 # .github/ci/train.sh
-# Runs inside a tmux session on the droplet.
+# Runs in background on the droplet, detached from the GitHub Actions job.
 # Usage: bash .github/ci/train.sh <flag_file> <sha> <branch> <work_dir>
 
 FLAG_FILE="$1"
@@ -64,10 +64,9 @@ cpu_watcher() {
   log "[CPU watcher] Started."
   while true; do
     sleep 30
-    # Get average CPU usage across all cores
     local usage
     usage=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1 | cut -d',' -f1)
-    usage=${usage%.*}  # trim decimals
+    usage=${usage%.*}
     if [ "${usage:-0}" -lt "$threshold" ] 2>/dev/null; then
       low_count=$((low_count + 1))
       log "[CPU watcher] Low CPU usage: ${usage}% (${low_count}/${max_low})"
@@ -75,7 +74,7 @@ cpu_watcher() {
         log "[CPU watcher] ⚠️ CPU usage has been low for 5 minutes — training may have crashed."
         send_email "⚠️ NanoGoal training — low CPU detected" \
           "CPU usage has been below ${threshold}% for 5 consecutive minutes.\n\nThis may indicate the training has crashed or stalled.\n\nCommit: $SHA\nBranch: $BRANCH\n\nCheck the droplet: tail -f $WORK_DIR/logs/train_session.log"
-        low_count=0  # reset to avoid spam — will alert again after another 5 min
+        low_count=0
       fi
     else
       low_count=0
@@ -85,20 +84,17 @@ cpu_watcher() {
 
 # ── 2h log reporter ───────────────────────────────────────────────────────────
 log_reporter() {
-  local interval=$((2 * 3600))  # 2 hours in seconds
+  local interval=$((2 * 3600))
   while true; do
     sleep $interval
     local body="Training progress report — $(date -u '+%Y-%m-%d %H:%M UTC')\nCommit: $SHA\nBranch: $BRANCH\n\n"
-
     for difficulty in easy medium hard; do
       local logfile="$WORK_DIR/logs/train_${difficulty}.log"
       if [ -f "$logfile" ]; then
         body+="=== $difficulty ===\n"
-        # Last 30 lines of the log
         body+="$(tail -30 "$logfile")\n\n"
       fi
     done
-
     send_email "📊 NanoGoal training report — $(date -u '+%H:%M UTC')" "$body"
     log "[Log reporter] 2h report sent."
   done
@@ -126,42 +122,7 @@ if [ "$TRAIN_EASY" = "true" ]; then
   log "Starting easy training..."
   send_email "🟢 NanoGoal — easy training started" "Easy training started.\nCommit: $SHA"
 
-  log "About to launch training..."
-
-  log "WORK_DIR=$WORK_DIR"
-  log "VENV=$VENV"
-
-  log "Checking venv python..."
-  ls -l "$VENV/python" || {
-    log "❌ VENV python NOT FOUND"
-    exit 1
-  }
-
-  log "Checking python version..."
-  "$VENV/python" -c "import sys; print(sys.executable); print(sys.version)" || {
-    log "❌ Python execution failed"
-    exit 1
-  }
-
-  touch logs/train_easy.log
-
-  log "Listing project root:"
-  ls -la
-
-  log "Checking train_easy.py exists:"
-  ls -l train_easy.py || {
-    log "❌ train_easy.py NOT FOUND"
-    exit 1
-  }
-
-  log "Launching train_easy.py..."
-
-  "$VENV/python" -u train_easy.py 2>&1 | tee logs/train_easy.log
-  EXIT_CODE=${PIPESTATUS[0]}
-
-  log "Training exited with code $EXIT_CODE"
-
-  if [ "$EXIT_CODE" -eq 0 ]; then
+  if $VENV/python -u train_easy.py > logs/train_easy.log 2>&1; then
     log "Easy training complete."
     log "Running easy evaluations..."
     $VENV/python eval.py 0 0 >> logs/train_easy.log 2>&1
@@ -187,7 +148,7 @@ if [ "$TRAIN_MEDIUM" = "true" ] && [ "${TRAINING_FAILED:-false}" = "false" ]; th
   log "Starting medium training..."
   send_email "🟡 NanoGoal — medium training started" "Medium training started.\nCommit: $SHA"
 
-  if $VENV/python train_medium.py > logs/train_medium.log 2>&1; then
+  if $VENV/python -u train_medium.py > logs/train_medium.log 2>&1; then
     log "Medium training complete."
     log "Running medium evaluations..."
     $VENV/python eval.py 1 0 >> logs/train_medium.log 2>&1
@@ -213,7 +174,7 @@ if [ "$TRAIN_HARD" = "true" ] && [ "${TRAINING_FAILED:-false}" = "false" ]; then
   log "Starting hard training..."
   send_email "🔴 NanoGoal — hard training started" "Hard training started.\nCommit: $SHA"
 
-  if $VENV/python train_hard.py > logs/train_hard.log 2>&1; then
+  if $VENV/python -u train_hard.py > logs/train_hard.log 2>&1; then
     log "Hard training complete."
     log "Running hard evaluations..."
     $VENV/python eval.py 2 0 >> logs/train_hard.log 2>&1
@@ -230,6 +191,7 @@ if [ "$TRAIN_HARD" = "true" ] && [ "${TRAINING_FAILED:-false}" = "false" ]; then
     send_email "❌ NanoGoal — hard training FAILED" \
       "Hard training failed.\nCommit: $SHA\n\nLast logs:\n$(tail -50 logs/train_hard.log)"
     log "Hard training FAILED."
+    TRAINING_FAILED=true
   fi
 fi
 

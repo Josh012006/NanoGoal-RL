@@ -2,12 +2,13 @@
 # view of the  plots, they are automatically saved in the appropriate way
 
 # A file to help plot different relationships in the results of the models' testing.
-# Was generated with CHATGPT.
+# Was reviewed with CHATGPT adn CLAUDE.
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import sys
+from pathlib import Path
 
 
 if len(sys.argv) < 4:
@@ -115,6 +116,10 @@ def summary_text(s: pd.Series, name: str) -> str:
     q05, q50, q95 = s.quantile([0.05, 0.50, 0.95]).to_numpy()
     mu = s.mean()
     return f"{name}: mean={mu:.3f} | median={q50:.3f} | q05={q05:.3f} | q95={q95:.3f} | n={len(s)}"
+
+
+
+Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
 
 # ---------- 1) Return (raw + running mean) ----------
 fig, ax = plt.subplots()
