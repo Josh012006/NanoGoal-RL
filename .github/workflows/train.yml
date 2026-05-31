@@ -73,12 +73,10 @@ jobs:
       - name: Clean up previous training artifacts
         if: steps.read_flag.outputs.train == 'true'
         run: |
-          if [ -f logs/train.pid ]; then
-            OLD_PID=$(cat logs/train.pid)
-            kill "$OLD_PID" 2>/dev/null || true
-            echo "Killed stale training process (PID $OLD_PID)."
-          fi
-          rm -f logs/train_*.log logs/train_*.DONE logs/train_*.FAILED logs/train_session.log logs/train.pid
+          # Stop any running training service
+          sudo systemctl stop nanogoal-training 2>/dev/null || true
+          # Remove previous training logs and status files
+          rm -f logs/train_*.log logs/train_*.DONE logs/train_*.FAILED logs/train_session.log
           echo "Cleaned up previous training artifacts."
 
       - name: Install dependencies
@@ -111,25 +109,29 @@ jobs:
             echo "Topology cache already exists — skipping precompute."
           fi
 
-      - name: Launch training in background
+      - name: Launch training via systemd
         if: steps.read_flag.outputs.train == 'true'
         run: |
+          set -e
+
           WORK_DIR="$(pwd)"
           chmod +x .github/ci/train.sh
 
-          # setsid creates a new session completely detached from the GitHub Actions shell
-          # The training process survives after the job ends
-          setsid env \
-            GITHUB_TOKEN="${{ github.token }}" \
-            GITHUB_REPOSITORY="${{ github.repository }}" \
-            GH_TOKEN="${{ github.token }}" \
-            bash .github/ci/train.sh \
-            "$WORK_DIR/.github/ci/train.flag" \
-            "${{ github.sha }}" \
-            "${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}" \
-            "$WORK_DIR" \
-            > "$WORK_DIR/logs/train_session.log" 2>&1 &
+          # Write environment variables for the systemd service
+          cat > /tmp/nanogoal-training.env << EOF
+          FLAG_FILE=$WORK_DIR/.github/ci/train.flag
+          SHA=${{ github.sha }}
+          BRANCH=${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
+          WORK_DIR=$WORK_DIR
+          GITHUB_TOKEN=${{ github.token }}
+          GITHUB_REPOSITORY=${{ github.repository }}
+          GH_TOKEN=${{ github.token }}
+          EOF
 
-          echo $! > "$WORK_DIR/logs/train.pid"
-          echo "Training launched (PID $(cat $WORK_DIR/logs/train.pid))."
-          echo "Monitor with: tail -f $WORK_DIR/logs/train_session.log"
+          # Start the systemd service — completely independent of this job
+          sudo systemctl daemon-reload
+          sudo systemctl start nanogoal-training
+
+          echo "Training launched via systemd service 'nanogoal-training'."
+          echo "Monitor with: sudo journalctl -u nanogoal-training -f"
+          echo "Or:           tail -f $WORK_DIR/logs/train_session.log"

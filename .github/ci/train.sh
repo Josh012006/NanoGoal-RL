@@ -1,12 +1,12 @@
 #!/bin/bash
 # .github/ci/train.sh
-# Runs in background on the droplet, detached from the GitHub Actions job.
-# Usage: bash .github/ci/train.sh <flag_file> <sha> <branch> <work_dir>
+# Runs as a systemd service on the droplet, completely independent of GitHub Actions.
+# Environment variables are provided via /tmp/nanogoal-training.env loaded by systemd.
 
-FLAG_FILE="$1"
-SHA="$2"
-BRANCH="$3"
-WORK_DIR="$4"
+FLAG_FILE="${FLAG_FILE}"
+SHA="${SHA}"
+BRANCH="${BRANCH}"
+WORK_DIR="${WORK_DIR}"
 VENV="$WORK_DIR/.venv/bin"
 
 cd "$WORK_DIR"
@@ -56,11 +56,10 @@ send_email "🚀 NanoGoal training started ($SHA)" \
   "Training started on branch $BRANCH.\n\nFlags:\n- easy=$TRAIN_EASY\n- medium=$TRAIN_MEDIUM\n- hard=$TRAIN_HARD\n\nCommit: $SHA"
 
 # ── CPU watcher ───────────────────────────────────────────────────────────────
-# Alerts if average CPU usage stays below 20% for more than 10 consecutive checks (5 min)
 cpu_watcher() {
   local low_count=0
   local threshold=20
-  local max_low=10  # 10 checks × 30s = 5 minutes
+  local max_low=10
   log "[CPU watcher] Started."
   while true; do
     sleep 30
@@ -100,7 +99,6 @@ log_reporter() {
   done
 }
 
-# Launch both background processes
 cpu_watcher &
 CPU_WATCHER_PID=$!
 log "CPU watcher started (PID $CPU_WATCHER_PID)"
@@ -109,7 +107,6 @@ log_reporter &
 LOG_REPORTER_PID=$!
 log "Log reporter started (PID $LOG_REPORTER_PID)"
 
-# Cleanup function — kills background processes when train.sh exits
 cleanup() {
   log "Stopping background processes..."
   kill "$CPU_WATCHER_PID" 2>/dev/null || true
