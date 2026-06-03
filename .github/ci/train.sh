@@ -11,6 +11,12 @@ VENV="$WORK_DIR/.venv/bin"
 
 cd "$WORK_DIR"
 
+# ── Generate unique run ID ────────────────────────────────────────────────────
+# Format: YYYYMMDD_HHMMSS_<short_sha> — unique per run, human-readable
+RUN_ID="$(date -u '+%Y%m%d_%H%M%S')_${SHA:0:7}"
+export RUN_ID
+log_prefix="[run:$RUN_ID]"
+
 # ── Load SendGrid config ───────────────────────────────────────────────────────
 if [ -f ~/.sendgrid_config ]; then
   source ~/.sendgrid_config
@@ -19,7 +25,7 @@ NOTIFY_EMAIL="josuesmjr.mongan@gmail.com"
 FROM_EMAIL="josuesmjr.mongan@gmail.com"
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-log() { echo "[$(date -u '+%Y-%m-%d %H:%M:%S')] $*"; }
+log() { echo "[$(date -u '+%Y-%m-%d %H:%M:%S')] $log_prefix $*"; }
 
 send_email() {
   local subject="$1"
@@ -52,8 +58,9 @@ done < "$FLAG_FILE"
 
 TRAINING_FAILED=false
 log "Flags → easy=$TRAIN_EASY medium=$TRAIN_MEDIUM hard=$TRAIN_HARD"
+log "Run ID: $RUN_ID"
 send_email "🚀 NanoGoal training started ($SHA)" \
-  "Training started on branch $BRANCH.\n\nFlags:\n- easy=$TRAIN_EASY\n- medium=$TRAIN_MEDIUM\n- hard=$TRAIN_HARD\n\nCommit: $SHA"
+  "Training started on branch $BRANCH.\nRun ID: $RUN_ID\n\nFlags:\n- easy=$TRAIN_EASY\n- medium=$TRAIN_MEDIUM\n- hard=$TRAIN_HARD\n\nCommit: $SHA"
 
 # ── CPU watcher ───────────────────────────────────────────────────────────────
 cpu_watcher() {
@@ -72,7 +79,7 @@ cpu_watcher() {
       if [ "$low_count" -ge "$max_low" ]; then
         log "[CPU watcher] ⚠️ CPU usage has been low for 5 minutes — training may have crashed."
         send_email "⚠️ NanoGoal training — low CPU detected" \
-          "CPU usage has been below ${threshold}% for 5 consecutive minutes.\n\nThis may indicate the training has crashed or stalled.\n\nCommit: $SHA\nBranch: $BRANCH\n\nCheck the droplet: tail -f $WORK_DIR/logs/train_session.log"
+          "CPU usage has been below ${threshold}% for 5 consecutive minutes.\n\nRun ID: $RUN_ID\nCommit: $SHA\nBranch: $BRANCH\n\nCheck the droplet: tail -f $WORK_DIR/logs/train_session.log"
         low_count=0
       fi
     else
@@ -81,21 +88,21 @@ cpu_watcher() {
   done
 }
 
-# ── 2h log reporter ───────────────────────────────────────────────────────────
+# ── 4h log reporter ───────────────────────────────────────────────────────────
 log_reporter() {
-  local interval=$((2 * 3600))
+  local interval=$((4 * 3600))
   while true; do
     sleep $interval
-    local body="Training progress report — $(date -u '+%Y-%m-%d %H:%M UTC')\nCommit: $SHA\nBranch: $BRANCH\n\n"
+    local body="Training progress report — $(date -u '+%Y-%m-%d %H:%M UTC')\nRun ID: $RUN_ID\nCommit: $SHA\nBranch: $BRANCH\n\n"
     for difficulty in easy medium hard; do
       local logfile="$WORK_DIR/logs/train_${difficulty}.log"
       if [ -f "$logfile" ]; then
         body+="=== $difficulty ===\n"
-        body+="$(tail -30 "$logfile")\n\n"
+        body+="$(tail -300 "$logfile")\n\n"
       fi
     done
     send_email "📊 NanoGoal training report — $(date -u '+%H:%M UTC')" "$body"
-    log "[Log reporter] 2h report sent."
+    log "[Log reporter] 4h report sent."
   done
 }
 
@@ -117,9 +124,9 @@ trap cleanup EXIT
 # ── Train easy ────────────────────────────────────────────────────────────────
 if [ "$TRAIN_EASY" = "true" ]; then
   log "Starting easy training..."
-  send_email "🟢 NanoGoal — easy training started" "Easy training started.\nCommit: $SHA"
+  send_email "🟢 NanoGoal — easy training started" "Easy training started.\nRun ID: $RUN_ID\nCommit: $SHA"
 
-  if $VENV/python -u train_easy.py > logs/train_easy.log 2>&1; then
+  if RUN_ID="$RUN_ID" $VENV/python -u train_easy.py > logs/train_easy.log 2>&1; then
     log "Easy training complete."
     log "Running easy evaluations..."
     $VENV/python eval.py 0 0 >> logs/train_easy.log 2>&1
@@ -129,12 +136,12 @@ if [ "$TRAIN_EASY" = "true" ]; then
     $VENV/python saving_plots.py results/easy/ppo_eval_medium.csv plots/easy 1 0 >> logs/train_easy.log 2>&1
     $VENV/python saving_plots.py results/easy/ppo_eval_hard.csv   plots/easy 2 0 >> logs/train_easy.log 2>&1
     touch logs/train_easy.DONE
-    send_email "✅ NanoGoal — easy training complete" "Easy training finished successfully.\nCommit: $SHA"
+    send_email "✅ NanoGoal — easy training complete" "Easy training finished successfully.\nRun ID: $RUN_ID\nCommit: $SHA"
     log "Easy eval and plots done."
   else
     touch logs/train_easy.FAILED
     send_email "❌ NanoGoal — easy training FAILED" \
-      "Easy training failed.\nCommit: $SHA\n\nLast logs:\n$(tail -50 logs/train_easy.log)"
+      "Easy training failed.\nRun ID: $RUN_ID\nCommit: $SHA\n\nLast logs:\n$(tail -50 logs/train_easy.log)"
     log "Easy training FAILED."
     TRAINING_FAILED=true
   fi
@@ -143,9 +150,9 @@ fi
 # ── Train medium ──────────────────────────────────────────────────────────────
 if [ "$TRAIN_MEDIUM" = "true" ] && [ "${TRAINING_FAILED:-false}" = "false" ]; then
   log "Starting medium training..."
-  send_email "🟡 NanoGoal — medium training started" "Medium training started.\nCommit: $SHA"
+  send_email "🟡 NanoGoal — medium training started" "Medium training started.\nRun ID: $RUN_ID\nCommit: $SHA"
 
-  if $VENV/python -u train_medium.py > logs/train_medium.log 2>&1; then
+  if RUN_ID="$RUN_ID" $VENV/python -u train_medium.py > logs/train_medium.log 2>&1; then
     log "Medium training complete."
     log "Running medium evaluations..."
     $VENV/python eval.py 1 0 >> logs/train_medium.log 2>&1
@@ -155,12 +162,12 @@ if [ "$TRAIN_MEDIUM" = "true" ] && [ "${TRAINING_FAILED:-false}" = "false" ]; th
     $VENV/python saving_plots.py results/medium/ppo_eval_medium.csv plots/medium 1   >> logs/train_medium.log 2>&1
     $VENV/python saving_plots.py results/medium/ppo_eval_hard.csv   plots/medium 2 0 >> logs/train_medium.log 2>&1
     touch logs/train_medium.DONE
-    send_email "✅ NanoGoal — medium training complete" "Medium training finished successfully.\nCommit: $SHA"
+    send_email "✅ NanoGoal — medium training complete" "Medium training finished successfully.\nRun ID: $RUN_ID\nCommit: $SHA"
     log "Medium eval and plots done."
   else
     touch logs/train_medium.FAILED
     send_email "❌ NanoGoal — medium training FAILED" \
-      "Medium training failed.\nCommit: $SHA\n\nLast logs:\n$(tail -50 logs/train_medium.log)"
+      "Medium training failed.\nRun ID: $RUN_ID\nCommit: $SHA\n\nLast logs:\n$(tail -50 logs/train_medium.log)"
     log "Medium training FAILED."
     TRAINING_FAILED=true
   fi
@@ -169,9 +176,9 @@ fi
 # ── Train hard ────────────────────────────────────────────────────────────────
 if [ "$TRAIN_HARD" = "true" ] && [ "${TRAINING_FAILED:-false}" = "false" ]; then
   log "Starting hard training..."
-  send_email "🔴 NanoGoal — hard training started" "Hard training started.\nCommit: $SHA"
+  send_email "🔴 NanoGoal — hard training started" "Hard training started.\nRun ID: $RUN_ID\nCommit: $SHA"
 
-  if $VENV/python -u train_hard.py > logs/train_hard.log 2>&1; then
+  if RUN_ID="$RUN_ID" $VENV/python -u train_hard.py > logs/train_hard.log 2>&1; then
     log "Hard training complete."
     log "Running hard evaluations..."
     $VENV/python eval.py 2 0 >> logs/train_hard.log 2>&1
@@ -181,12 +188,12 @@ if [ "$TRAIN_HARD" = "true" ] && [ "${TRAINING_FAILED:-false}" = "false" ]; then
     $VENV/python saving_plots.py results/hard/ppo_eval_medium.csv plots/hard 1 0 >> logs/train_hard.log 2>&1
     $VENV/python saving_plots.py results/hard/ppo_eval_hard.csv   plots/hard 2   >> logs/train_hard.log 2>&1
     touch logs/train_hard.DONE
-    send_email "✅ NanoGoal — hard training complete" "Hard training finished successfully.\nCommit: $SHA"
+    send_email "✅ NanoGoal — hard training complete" "Hard training finished successfully.\nRun ID: $RUN_ID\nCommit: $SHA"
     log "Hard eval and plots done."
   else
     touch logs/train_hard.FAILED
     send_email "❌ NanoGoal — hard training FAILED" \
-      "Hard training failed.\nCommit: $SHA\n\nLast logs:\n$(tail -50 logs/train_hard.log)"
+      "Hard training failed.\nRun ID: $RUN_ID\nCommit: $SHA\n\nLast logs:\n$(tail -50 logs/train_hard.log)"
     log "Hard training FAILED."
     TRAINING_FAILED=true
   fi
@@ -239,6 +246,6 @@ gh issue create \
 
 # ── Final notification ────────────────────────────────────────────────────────
 send_email "🏁 NanoGoal — all training complete" \
-  "All training sessions have completed.\n\n$BODY\n\nCommit: $SHA\nBranch: $BRANCH"
+  "All training sessions have completed.\n\n$BODY\n\nRun ID: $RUN_ID\nCommit: $SHA\nBranch: $BRANCH"
 
 log "All done."

@@ -28,9 +28,14 @@ if __name__ == "__main__":
         vec_env_cls=SubprocVecEnv
     )
 
+    # Use RUN_ID from environment for unique checkpoint folder per run
+    run_id = os.environ.get("RUN_ID", "local")
+    checkpoint_path = f"./checkpoints/easy/{run_id}/"
+    print(f"Checkpoint path: {checkpoint_path}")
+
     checkpoint_callback = KeepLastTwoCheckpoints(
         save_freq=1_000_000,
-        save_path="./checkpoints/easy/",
+        save_path=checkpoint_path,
         name_prefix="ppo_easy"
     )
 
