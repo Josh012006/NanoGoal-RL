@@ -6,50 +6,37 @@ import env
 
 SEED_RANGE = range(10000)
 
-# A* on the discrete grid to compute a difficulty score
+TURN_THRESHOLD_DEG = 45   # minimum angle change to count as a real wall detour
+ALPHA              = 30.0 # penalty per turn in the composite score (used for intra-category sorting only)
+
+
+# ── A* returning path + turn count ────────────────────────────────────────────
 
 def heuristic(a, b):
-    """
-    Manhattan distance between two grid cells.
-    This is the classic admissible heuristic for A* on a grid.
-    Manhattan is used instead of Euclidean because movements
-    are discrete (up/down/left/right + diagonals).
-    """
+    """Manhattan distance — admissible heuristic for A* on a grid."""
     return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
 
-def astar_path_length(grid, start, goal, agent_radius):
+def astar_path_and_turns(grid, start, goal, agent_radius,
+                          turn_threshold_deg=TURN_THRESHOLD_DEG):
     """
-    Returns the number of nodes in the optimal A* path between start and goal
-    on the 'grid', taking the agent radius into account to avoid cells too
-    close to walls.
+    Runs A* from start to goal on the discrete grid.
+    Returns (path_length, nb_turns) where:
+      - path_length : total cost of the optimal path (np.inf if unreachable)
+      - nb_turns    : number of significant direction changes (≥ turn_threshold_deg)
 
-    Args:
-        grid      : np.ndarray (size x size), 1 = wall, 0 = free
-        start     : tuple (i, j) in integer grid coordinates
-        goal      : tuple (i, j) in integer grid coordinates
-        agent_radius : float, agent radius in cell units
-
-    Returns:
-        int  : path length (number of nodes) if reachable
-        float: np.inf if no path exists
+    A 'turn' is counted when the angle between two consecutive movement
+    vectors exceeds the threshold — this captures genuine wall detours,
+    not the small diagonal adjustments inherent to grid movement.
     """
-    size = len(grid)
-    int_r = int(np.ceil(agent_radius))  
+    size  = len(grid)
+    int_r = int(np.ceil(agent_radius))
 
     def is_free(i, j):
-        """
-        A cell is 'free' if:
-            1. it is within the bounds of the grid
-            2. it is not a wall (grid == 0)
-            3. no cell within its neighborhood of radius agent_radius is a wall
-                    (reuses the same logic as surroundings_ok in utils.py)
-        """
         if not (0 <= i < size and 0 <= j < size):
             return False
         if grid[i][j] == 1:
             return False
-        
         for di in range(-int_r, int_r + 1):
             for dj in range(-int_r, int_r + 1):
                 ni, nj = i + di, j + dj
@@ -58,115 +45,153 @@ def astar_path_length(grid, start, goal, agent_radius):
         return True
 
     if not is_free(*start) or not is_free(*goal):
-        return np.inf
+        return np.inf, 0
 
-    # Min heap : (f_score, g_score, node)
-    # f = g + h  avec g = actual cost from start, h = heuristic toward goal
+    # Min-heap: (f, g, node)
     open_heap = []
-    heapq.heappush(open_heap, (heuristic(start, goal), 0, start))
+    heapq.heappush(open_heap, (heuristic(start, goal), 0.0, start))
 
-    # g_scores[node] = best known cost to reach this node from start
-    g_scores = {start: 0}
+    g_scores  = {start: 0.0}
+    came_from = {}  # to reconstruct the path
 
-    # 8 directions: up/down/left/right + diagonals
-    # Diagonals cost sqrt(2) ≈ 1.414 (actual distance)
     neighbors = [
-        ((-1,  0), 1.0), (( 1,  0), 1.0), (( 0, -1), 1.0), (( 0,  1), 1.0),
-        ((-1, -1), 1.414), ((-1,  1), 1.414), (( 1, -1), 1.414), (( 1,  1), 1.414),
+        ((-1,  0), 1.0),   (( 1,  0), 1.0),
+        (( 0, -1), 1.0),   (( 0,  1), 1.0),
+        ((-1, -1), 1.414), ((-1,  1), 1.414),
+        (( 1, -1), 1.414), (( 1,  1), 1.414),
     ]
 
     while open_heap:
         f, g, current = heapq.heappop(open_heap)
 
         if current == goal:
-            # g contains the total cost of the path (sum of distances between nodes)
-            # We return g as the difficulty score: the longer it is, the harder it is
-            return g
+            # ── Reconstruct path ──────────────────────────────────────────────
+            path = []
+            node = goal
+            while node in came_from:
+                path.append(node)
+                node = came_from[node]
+            path.append(start)
+            path.reverse()
 
-        # If we have already found a better path to this node, we skip
+            # ── Count significant direction changes ───────────────────────────
+            threshold_rad = np.radians(turn_threshold_deg)
+            nb_turns = 0
+            i = 1
+            while i < len(path) - 1:
+                v1 = np.array(path[i])     - np.array(path[i - 1])
+                v2 = np.array(path[i + 1]) - np.array(path[i])
+                n1, n2 = np.linalg.norm(v1), np.linalg.norm(v2)
+                if n1 < 1e-8 or n2 < 1e-8:
+                    i += 1
+                    continue
+                cos_a = np.dot(v1, v2) / (n1 * n2)
+                angle = np.arccos(np.clip(cos_a, -1.0, 1.0))
+                if angle >= threshold_rad:
+                    nb_turns += 1
+                    # Skip a few nodes after a turn to avoid counting the same
+                    # detour multiple times (the path wobbles around a corner)
+                    i += 3
+                else:
+                    i += 1
+
+            return g, nb_turns
+
         if g > g_scores.get(current, np.inf):
             continue
 
         for (di, dj), cost in neighbors:
-            ni, nj = current[0] + di, current[1] + dj
-            neighbor = (ni, nj)
+            ni, nj    = current[0] + di, current[1] + dj
+            neighbor  = (ni, nj)
             if not is_free(ni, nj):
                 continue
             new_g = g + cost
             if new_g < g_scores.get(neighbor, np.inf):
-                g_scores[neighbor] = new_g
-                f_score = new_g + heuristic(neighbor, goal)
-                heapq.heappush(open_heap, (f_score, new_g, neighbor))
+                g_scores[neighbor]  = new_g
+                came_from[neighbor] = current
+                heapq.heappush(open_heap, (new_g + heuristic(neighbor, goal), new_g, neighbor))
 
-    return np.inf  # No path found
+    return np.inf, 0  # unreachable
 
 
+# ── Difficulty score ───────────────────────────────────────────────────────────
 
-# Difficulty score via the real environment
-
-def score(seed: int, environment: env.NanoEnv) -> float:
+def score(seed: int, environment: env.NanoEnv):
     """
-    Calculate the difficulty score of a world generated by `seed`.
-
-    The environment is reset with this seed to force generation
-    of the world (topology, agent and target positions). Then A* is run
-    on the internal discrete grid (_vessel_topology) between the agent
-    and the target positions.
-
-    The returned score is the length of the A* path (total cost).
-    A short path = easy world. A long or non-existent path = hard world.
-
-    Returns:
-        float: length of the optimal path, or np.inf if unreachable
+    Returns (path_length, nb_turns, composite_score) for a given seed.
+    composite_score = path_length + ALPHA * nb_turns
+    Used for intra-category sorting only — classification is based on nb_turns.
     """
     environment.reset(seed=seed)
-
-    # Continuous positions → integer coordinates on the discrete grid
-    # _agent_location and _target_location are in cell units (float)
-    # int() truncates to the cell containing the entity center
     start = (int(environment._agent_location[0]), int(environment._agent_location[1]))
     goal  = (int(environment._target_location[0]), int(environment._target_location[1]))
 
-    return astar_path_length(
-        environment._vessel_topology,
-        start,
-        goal,
-        environment._agent_radius 
+    path_length, nb_turns = astar_path_and_turns(
+        environment._vessel_topology, start, goal, environment._agent_radius
     )
 
+    if path_length == np.inf:
+        return np.inf, 0, np.inf
+
+    composite = path_length + ALPHA * nb_turns
+    return path_length, nb_turns, composite
 
 
-# Classification and export
+# ── Classification and export ─────────────────────────────────────────────────
 
 if __name__ == "__main__":
     environment = env.NanoEnv()
 
     print(f"Computing scores for {len(SEED_RANGE)} seeds...")
-    scores = {}
+    results     = {}  # seed → (path_length, nb_turns, composite)
     unreachable = 0
 
     for s in SEED_RANGE:
-        sc = score(s, environment)
-        if sc == np.inf:
+        pl, nt, cs = score(s, environment)
+        if pl == np.inf:
             unreachable += 1
         else:
-            scores[s] = sc
+            results[s] = (pl, nt, cs)
+
+        if (s + 1) % 500 == 0:
+            print(f"  {s + 1}/{len(SEED_RANGE)}")
 
     environment.close()
-    print(f"{len(scores)} reachable seeds, {unreachable} ignored (unreachable).")
+    print(f"{len(results)} reachable seeds, {unreachable} ignored (unreachable).")
 
-    # Partition by percentiles over reachable seeds only
-    values = np.array(list(scores.values()))
-    p33 = np.percentile(values, 33)
-    p67 = np.percentile(values, 67)
+    # ── Explicit classification by number of turns ────────────────────────────
+    # Easy   : 0 turns   — near straight line to goal
+    # Medium : 1–2 turns — requires learning to navigate around walls
+    # Hard   : 3+ turns  — requires combining multiple navigation skills
+    easy_seeds   = {s: v for s, v in results.items() if v[1] == 0}
+    medium_seeds = {s: v for s, v in results.items() if 1 <= v[1] <= 2}
+    hard_seeds   = {s: v for s, v in results.items() if v[1] >= 3}
+
+    # Sort intra-category by composite score (shortest/simplest first)
+    easy_sorted   = sorted(easy_seeds.keys(),   key=lambda s: easy_seeds[s][2])
+    medium_sorted = sorted(medium_seeds.keys(), key=lambda s: medium_seeds[s][2])
+    hard_sorted   = sorted(hard_seeds.keys(),   key=lambda s: hard_seeds[s][2])
 
     seeds = {
-        "easy":   [s for s, v in scores.items() if v <= p33],
-        "medium": [s for s, v in scores.items() if p33 < v <= p67],
-        "hard":   [s for s, v in scores.items() if v > p67],
+        "easy":   easy_sorted,
+        "medium": medium_sorted,
+        "hard":   hard_sorted,
     }
 
     with open("seeds.json", "w") as f:
         json.dump(seeds, f, indent=2)
 
-    print(f"seeds.json generated → easy: {len(seeds['easy'])}, medium: {len(seeds['medium'])}, hard: {len(seeds['hard'])}")
+    print(f"\nseeds.json generated:")
+    print(f"  easy   (0 turns) : {len(easy_sorted):>5} seeds")
+    print(f"  medium (1–2 turns): {len(medium_sorted):>5} seeds")
+    print(f"  hard   (3+ turns) : {len(hard_sorted):>5} seeds")
+
+    # Distribution overview
+    turn_counts = [v[1] for v in results.values()]
+    print(f"\nTurn distribution:")
+    for t in range(8):
+        n = sum(1 for tc in turn_counts if tc == t)
+        print(f"  {t} turns: {n} seeds")
+    n_more = sum(1 for tc in turn_counts if tc >= 8)
+    if n_more:
+        print(f"  8+ turns: {n_more} seeds")
