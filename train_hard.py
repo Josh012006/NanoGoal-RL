@@ -35,14 +35,15 @@ if __name__ == "__main__":
         name_prefix="ppo_hard"
     )
 
+    # n_epochs=20 — maximum reuse per rollout for complex multi-detour navigation
     model = PPO.load(
         "models/ppo_nanogoal_medium",
         env=vec_env,
-        custom_objects={"n_steps": n_steps, "learning_rate": 5e-5}
+        custom_objects={"n_steps": n_steps, "learning_rate": 5e-5, "n_epochs": 20}
     )
 
     model.learn(
-        total_timesteps=280_000_000,
+        total_timesteps=300_000_000,
         reset_num_timesteps=False,
         tb_log_name="hard",
         callback=checkpoint_callback

@@ -35,10 +35,11 @@ if __name__ == "__main__":
         name_prefix="ppo_medium"
     )
 
+    # n_epochs=15 — more passes per rollout to extract more signal from complex episodes
     model = PPO.load(
         "models/ppo_nanogoal_easy",
         env=vec_env,
-        custom_objects={"n_steps": n_steps, "learning_rate": 1e-4}
+        custom_objects={"n_steps": n_steps, "learning_rate": 1e-4, "n_epochs": 15}
     )
 
     model.learn(

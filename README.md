@@ -87,7 +87,11 @@ That behavior was caused by two main things :
 
 So I did some fine tuning to improve its performance.
 
-The first step was to review the way the environments were chosen in the training process. Fortunately, I had already programmed the environnement so that a specific episode could be entirely reproductible by just passing a seed at the reset time. Instead of manually picking seeds, I wrote a script (`classify_seeds.py`) that automatically scores 10,000 seeds using the A* algorithm on the discrete grid. For each seed, A* computes the optimal path cost between the agent and the target, taking the agent radius into account to avoid cells too close to walls. Seeds where no path exists are discarded. The remaining reachable seeds are then automatically partitioned into three difficulty categories by percentile (33rd and 67th), replacing the previous subjective manual selection with an objective navigational difficulty measure.
+The first step was to review the way the environments were chosen in the training process. Fortunately, I had already programmed the environnement so that a specific episode could be entirely reproductible by just passing a seed at the reset time. Instead of manually picking seeds, I wrote a script (`classify_seeds.py`) that automatically scores 10,000 seeds using the A* algorithm on the discrete grid. For each seed, A* computes the total angular deviation of the optimal path — that is, the sum of all significant direction changes (≥ 45°) along the path from agent to target. This captures not just the distance but also how many times the agent must navigate around walls. Seeds where no path exists are discarded. The remaining reachable seeds are partitioned into three difficulty categories based on this deviation:
+
+- **Easy** (< 46° total deviation): the agent can reach the target with near-straight-line navigation and no real wall detours
+- **Medium** (46°–270°): the agent must learn to navigate around 1 to 2 significant obstacles
+- **Hard** (> 270°): the agent must combine multiple navigation skills to handle complex, multi-detour paths
 
 And then I decided of a repartition for the different steps of learning :
 - easy : 100% easy
@@ -97,26 +101,26 @@ And then I decided of a repartition for the different steps of learning :
 The second step was to fix the way the environments or more precisely the seeds were varying during the training sessions. For that, I used pools of seeds. What I did was I restreined the number of seeds used at different times of the training.
 I started with a pool of 4 seeds from the set of seeds for the current difficulty and doubled the size of the pool at regular intervals — every 700 episodes for easy, 1500 for medium, and 3000 for hard. This made learning steady and added more stability to the way the algorithm was inferring the policy.
 
-Only 40% of the classified seeds per category are used for training, sampled randomly. The remaining 60% form a held-out test set used exclusively for evaluation in `eval.py`, ensuring that the reported performance metrics reflect genuine generalization and not memorization of training environments.
+For training, 40% of easy seeds are sampled randomly, while 60% of medium and hard seeds are used — the latter two categories have smaller pools so a larger fraction is needed to give the agent sufficient variety. The remaining seeds in each category form a held-out test set used exclusively for evaluation in `eval.py`, ensuring that the reported performance metrics reflect genuine generalization and not memorization of training environments.
 
 ### What changed in v2
 
 Several infrastructure and training improvements were made for this version:
 
-- **Automatic seed classification with A***: seeds are now classified automatically using the A* algorithm on the discrete grid instead of manual selection. 10,000 seeds are scored by optimal path length, unreachable ones are discarded, and the rest are partitioned into easy/medium/hard by percentile.
+- **Improved seed classification with angular deviation**: difficulty is now measured by the total angular deviation of the A* path (sum of direction changes ≥ 45°), not just path length. This ensures easy seeds require no wall detours, medium seeds require 1–2, and hard seeds require complex multi-detour navigation. Out of ~7,575 reachable seeds, this yields ~5,549 easy, ~1,202 medium, and ~824 hard seeds.
+- **Asymmetric training split**: easy uses 40% of its seeds for training (large pool, less variety needed), while medium and hard use 60% to compensate for their smaller pools.
 - **Precomputed topology cache**: vessel topologies and free spaces are now precomputed once and stored on disk. This makes episode resets nearly instant instead of recomputing expensive Perlin noise maps at each episode, significantly reducing overhead.
 - **Parallel environments**: training now uses `SubprocVecEnv` to run 2 environments in parallel (one per CPU), doubling the data collection throughput. The number of environments is detected automatically from the available CPU count.
-- **Larger rollout buffer**: `n_steps` was doubled to 20_000 per environment to reduce the proportion of time spent in backpropagation relative to rollout collection, keeping both CPUs more consistently busy.
-- **Curriculum learning expanded**: the seed pools now draw from a much larger classified set (40% of all classified seeds per category), giving the agent significantly more environment diversity as training progresses.
-- **Automated CI/CD training pipeline**: training is now triggered via GitHub Actions and runs on a self-hosted Digital Ocean droplet. The pipeline handles dependency installation, cache management, training, evaluation, plot generation, and commits results automatically. Email notifications are sent at key training milestones via SendGrid.
+- **Larger rollout buffer**: `n_steps` was doubled to 20,000 per environment to reduce the proportion of time spent in backpropagation relative to rollout collection, keeping both CPUs more consistently busy.
+- **Increased n_epochs by difficulty**: easy uses `n_epochs=10` (default), medium uses `n_epochs=15`, and hard uses `n_epochs=20`. More passes per rollout allow the model to extract more signal from complex episodes, acting as an implicit replay ratio increase for harder stages.
+- **Automated CI/CD training pipeline**: training is now triggered via GitHub Actions and runs as a systemd service on a self-hosted Digital Ocean droplet, completely decoupled from the runner lifecycle. The pipeline handles dependency installation, cache management, training, evaluation, plot generation, and commits results automatically. Email notifications are sent at key training milestones via SendGrid.
 
 ## The results of the training (see `eval.py` for the evaluation code)
 
-When all the changes were done, I started training the model. After each training I plotted some interesting relationships between the results parameters. I want to mention that on the plots, **I truncated some extreme values** that were creating noise 
-and preventing me from actually understanding and assessing the model's quality.
+When all the changes were done, I started training the model. After each training I plotted some interesting relationships between the results parameters.
 
 ### Easy mode training
-It lasted **50_000_000 timesteps**. That was approximately **2.4 days** in real life. After that stage, **Billy** was able to succeed for more than half of the easy worlds of the test set. Here were the statistics :
+It lasted **50,000,000 timesteps** (~2.4 days). Easy worlds require no wall detours — the agent only needs to learn to navigate in a near-straight line toward the target. After this stage, **Billy** was able to succeed for more than half of the easy worlds of the test set.
 
 <p align="center">
   <img src="public/easy/reward_mean.png" width="800" alt="the reward mean during learning"><br>
@@ -150,15 +154,15 @@ It lasted **50_000_000 timesteps**. That was approximately **2.4 days** in real 
   <tr>
     <td align="center">
       <img src="plots/easy/return-episode-easy.png" width="600"
-           alt="Status of reward during testing episodes">
+           alt="Return distribution on easy test seeds">
       <br>
-      <u><em>Status of reward during testing episodes on easy mode</em></u>
+      <u><em>Return distribution on easy test seeds</em></u>
     </td>
     <td align="center">
       <img src="plots/easy/success-episode-easy.png" width="600"
-           alt="Success rate during episodes">
+           alt="Success rate on easy test seeds">
       <br>
-      <u><em>Success rate during episodes</em></u>
+      <u><em>Success rate on easy test seeds</em></u>
     </td>
   </tr>
 </table>
@@ -169,22 +173,22 @@ It lasted **50_000_000 timesteps**. That was approximately **2.4 days** in real 
   <tr>
     <td align="center">
       <img src="plots/easy/distances-easy.png" width="600"
-           alt="init-best-final distances">
+           alt="Initial distance vs best reached distance">
       <br>
-      <u><em>The relationship between initial distance to goal, best distance during episode and final distance at the end</em></u>
+      <u><em>Initial distance vs best reached distance per episode</em></u>
     </td>
     <td align="center">
       <img src="plots/easy/regret-episode.png" width="600"
-           alt="final-best">
+           alt="Regret distribution">
       <br>
-      <u><em>How often it loses progress</em></u>
+      <u><em>Regret distribution — how much progress is lost by the end of each episode</em></u>
     </td>
   </tr>
 </table>
 
 
 But I knew he could do more than that. But first before going to the medium and hard modes, I wanted to make sure that there would really be some learning being done.
-So I tested **Toddler Billy** on medium and hard tests sets. I only present here the status of the reward during the tests : 
+So I tested **Toddler Billy** on medium and hard tests sets. I only present here the return and distance plots :
 
 **Test of the model trained for easy mode on medium mode worlds**
 
@@ -192,23 +196,23 @@ So I tested **Toddler Billy** on medium and hard tests sets. I only present here
   <tr>
     <td align="center">
       <img src="plots/easy/return-episode-medium.png" width="600"
-           alt="Status of reward during test on medium mode seeds">
+           alt="Return distribution on medium test seeds">
       <br>
-      <u><em>Status of reward during test on medium mode seeds</em></u>
+      <u><em>Return distribution on medium test seeds</em></u>
     </td>
     <td align="center">
       <img src="plots/easy/distances-medium.png" width="600"
-           alt="init-best-final distances">
+           alt="Initial distance vs best reached distance on medium seeds">
       <br>
-      <u><em>The relationship between initial distance to goal, best distance during episode and final distance at the end</em></u>
+      <u><em>Initial distance vs best reached distance on medium seeds</em></u>
     </td>
   </tr>
   <tr>
     <td align="center" colspan="2">
       <img src="plots/easy/success-episode-medium.png" width="450"
-           alt="Success rate during episodes">
+           alt="Success rate on medium test seeds">
       <br>
-      <u><em>Success rate during episodes</em></u>
+      <u><em>Success rate on medium test seeds</em></u>
     </td>
   </tr>
 </table>
@@ -221,23 +225,23 @@ So I tested **Toddler Billy** on medium and hard tests sets. I only present here
   <tr>
     <td align="center">
       <img src="plots/easy/return-episode-hard.png" width="600"
-           alt="Status of reward during test on hard mode seeds">
+           alt="Return distribution on hard test seeds">
       <br>
-      <u><em>Status of reward during test on hard mode seeds</em></u>
+      <u><em>Return distribution on hard test seeds</em></u>
     </td>
     <td align="center">
       <img src="plots/easy/distances-hard.png" width="600"
-           alt="init-best-final distances">
+           alt="Initial distance vs best reached distance on hard seeds">
       <br>
-      <u><em>The relationship between initial distance to goal, best distance during episode and final distance at the end</em></u>
+      <u><em>Initial distance vs best reached distance on hard seeds</em></u>
     </td>
   </tr>
   <tr>
     <td align="center" colspan="2">
       <img src="plots/easy/success-episode-hard.png" width="450"
-           alt="Success rate during episodes">
+           alt="Success rate on hard test seeds">
       <br>
-      <u><em>Success rate during episodes</em></u>
+      <u><em>Success rate on hard test seeds</em></u>
     </td>
   </tr>
 </table>
@@ -246,7 +250,8 @@ So I tested **Toddler Billy** on medium and hard tests sets. I only present here
 <br />
 
 ### Medium mode training
-I trained the easy model for another **100_000_000 timesteps**. Here were the statistics : 
+I trained the easy model for another **150,000,000 timesteps**. Medium worlds require the agent to navigate around 1 to 2 significant obstacles — it must learn when to turn and how to recover its heading after a detour.
+
 <p align="center">
   <img src="public/medium/reward_mean.png" width="800" alt="the reward mean during learning"><br>
   <u><em>Evolution of reward during learning episodes</em></u>
@@ -258,15 +263,15 @@ I trained the easy model for another **100_000_000 timesteps**. Here were the st
   <tr>
     <td align="center">
       <img src="plots/medium/return-episode-medium.png" width="600"
-           alt="Status of reward during testing episodes">
+           alt="Return distribution on medium test seeds">
       <br>
-      <u><em>Status of reward during testing episodes on medium mode</em></u>
+      <u><em>Return distribution on medium test seeds</em></u>
     </td>
     <td align="center">
       <img src="plots/medium/success-episode-medium.png" width="600"
-           alt="Success rate during episodes">
+           alt="Success rate on medium test seeds">
       <br>
-      <u><em>Success rate during episodes</em></u>
+      <u><em>Success rate on medium test seeds</em></u>
     </td>
   </tr>
 </table>
@@ -277,15 +282,15 @@ I trained the easy model for another **100_000_000 timesteps**. Here were the st
   <tr>
     <td align="center">
       <img src="plots/medium/distances-medium.png" width="600"
-           alt="init-best-final distances">
+           alt="Initial distance vs best reached distance on medium seeds">
       <br>
-      <u><em>The relationship between initial distance to goal, best distance during episode and final distance at the end</em></u>
+      <u><em>Initial distance vs best reached distance on medium seeds</em></u>
     </td>
     <td align="center">
       <img src="plots/medium/regret-episode.png" width="600"
-           alt="final-best">
+           alt="Regret distribution">
       <br>
-      <u><em>How often it loses progress</em></u>
+      <u><em>Regret distribution</em></u>
     </td>
   </tr>
 </table>
@@ -299,23 +304,23 @@ This time I tested **Middle schooler Billy** on easy and hard tests sets too. We
   <tr>
     <td align="center">
       <img src="plots/medium/return-episode-easy.png" width="600"
-           alt="Status of reward during test on easy mode seeds">
+           alt="Return distribution on easy test seeds">
       <br>
-      <u><em>Status of reward during test on easy mode seeds</em></u>
+      <u><em>Return distribution on easy test seeds</em></u>
     </td>
     <td align="center">
       <img src="plots/medium/distances-easy.png" width="600"
-           alt="init-best-final distances">
+           alt="Initial distance vs best reached distance on easy seeds">
       <br>
-      <u><em>The relationship between initial distance to goal, best distance during episode and final distance at the end</em></u>
+      <u><em>Initial distance vs best reached distance on easy seeds</em></u>
     </td>
   </tr>
   <tr>
     <td align="center" colspan="2">
       <img src="plots/medium/success-episode-easy.png" width="450"
-           alt="Success rate during episodes">
+           alt="Success rate on easy test seeds">
       <br>
-      <u><em>Success rate during episodes</em></u>
+      <u><em>Success rate on easy test seeds</em></u>
     </td>
   </tr>
 </table>
@@ -328,23 +333,23 @@ This time I tested **Middle schooler Billy** on easy and hard tests sets too. We
   <tr>
     <td align="center">
       <img src="plots/medium/return-episode-hard.png" width="600"
-           alt="Status of reward during test on hard mode seeds">
+           alt="Return distribution on hard test seeds">
       <br>
-      <u><em>Status of reward during test on hard mode seeds</em></u>
+      <u><em>Return distribution on hard test seeds</em></u>
     </td>
     <td align="center">
       <img src="plots/medium/distances-hard.png" width="600"
-           alt="init-best-final distances">
+           alt="Initial distance vs best reached distance on hard seeds">
       <br>
-      <u><em>The relationship between initial distance to goal, best distance during episode and final distance at the end</em></u>
+      <u><em>Initial distance vs best reached distance on hard seeds</em></u>
     </td>
   </tr>
   <tr>
     <td align="center" colspan="2">
       <img src="plots/medium/success-episode-hard.png" width="450"
-           alt="Success rate during episodes">
+           alt="Success rate on hard test seeds">
       <br>
-      <u><em>Success rate during episodes</em></u>
+      <u><em>Success rate on hard test seeds</em></u>
     </td>
   </tr>
 </table>
@@ -353,7 +358,8 @@ This time I tested **Middle schooler Billy** on easy and hard tests sets too. We
 <br />
 
 ### Hard mode training
-For the last one I added **280_000_000 timesteps**. Here were the statistics : 
+For the last one I added **280,000,000 timesteps**. Hard worlds require the agent to combine everything it has learned — navigating around multiple significant obstacles (> 270° total angular deviation) while maintaining directional progress toward a distant goal.
+
 <p align="center">
   <img src="public/hard/reward_mean.png" width="800" alt="the reward mean during learning"><br>
   <u><em>Evolution of reward during learning episodes</em></u>
@@ -365,15 +371,15 @@ For the last one I added **280_000_000 timesteps**. Here were the statistics :
   <tr>
     <td align="center">
       <img src="plots/hard/return-episode-hard.png" width="600"
-           alt="Status of reward during testing episodes">
+           alt="Return distribution on hard test seeds">
       <br>
-      <u><em>Status of reward during testing episodes on hard mode</em></u>
+      <u><em>Return distribution on hard test seeds</em></u>
     </td>
     <td align="center">
       <img src="plots/hard/success-episode-hard.png" width="600"
-           alt="Success rate during episodes">
+           alt="Success rate on hard test seeds">
       <br>
-      <u><em>Success rate during episodes</em></u>
+      <u><em>Success rate on hard test seeds</em></u>
     </td>
   </tr>
 </table>
@@ -384,15 +390,15 @@ For the last one I added **280_000_000 timesteps**. Here were the statistics :
   <tr>
     <td align="center">
       <img src="plots/hard/distances-hard.png" width="600"
-           alt="init-best-final distances">
+           alt="Initial distance vs best reached distance on hard seeds">
       <br>
-      <u><em>The relationship between initial distance to goal, best distance during episode and final distance at the end</em></u>
+      <u><em>Initial distance vs best reached distance on hard seeds</em></u>
     </td>
     <td align="center">
       <img src="plots/hard/regret-episode.png" width="600"
-           alt="final-best">
+           alt="Regret distribution">
       <br>
-      <u><em>How often it loses progress</em></u>
+      <u><em>Regret distribution</em></u>
     </td>
   </tr>
 </table>
@@ -406,23 +412,23 @@ Lastly, I tested **High schooler Billy** on easy and medium tests sets too to ma
   <tr>
     <td align="center">
       <img src="plots/hard/return-episode-easy.png" width="600"
-           alt="Status of reward during test on easy mode seeds">
+           alt="Return distribution on easy test seeds">
       <br>
-      <u><em>Status of reward during test on easy mode seeds</em></u>
+      <u><em>Return distribution on easy test seeds</em></u>
     </td>
     <td align="center">
       <img src="plots/hard/distances-easy.png" width="600"
-           alt="init-best-final distances">
+           alt="Initial distance vs best reached distance on easy seeds">
       <br>
-      <u><em>The relationship between initial distance to goal, best distance during episode and final distance at the end</em></u>
+      <u><em>Initial distance vs best reached distance on easy seeds</em></u>
     </td>
   </tr>
   <tr>
     <td align="center" colspan="2">
       <img src="plots/hard/success-episode-easy.png" width="450"
-           alt="Success rate during episodes">
+           alt="Success rate on easy test seeds">
       <br>
-      <u><em>Success rate during episodes</em></u>
+      <u><em>Success rate on easy test seeds</em></u>
     </td>
   </tr>
 </table>
@@ -435,28 +441,26 @@ Lastly, I tested **High schooler Billy** on easy and medium tests sets too to ma
   <tr>
     <td align="center">
       <img src="plots/hard/return-episode-medium.png" width="600"
-           alt="Status of reward during test on medium mode seeds">
+           alt="Return distribution on medium test seeds">
       <br>
-      <u><em>Status of reward during test on medium mode seeds</em></u>
+      <u><em>Return distribution on medium test seeds</em></u>
     </td>
     <td align="center">
       <img src="plots/hard/distances-medium.png" width="600"
-           alt="init-best-final distances">
+           alt="Initial distance vs best reached distance on medium seeds">
       <br>
-      <u><em>The relationship between initial distance to goal, best distance during episode and final distance at the end</em></u>
+      <u><em>Initial distance vs best reached distance on medium seeds</em></u>
     </td>
   </tr>
   <tr>
     <td align="center" colspan="2">
       <img src="plots/hard/success-episode-medium.png" width="450"
-           alt="Success rate during episodes">
+           alt="Success rate on medium test seeds">
       <br>
-      <u><em>Success rate during episodes</em></u>
+      <u><em>Success rate on medium test seeds</em></u>
     </td>
   </tr>
 </table>
-
-**As you can see for some reason, my model trained for hard worlds did worst than my previous models. So my next step will be to solve that issue. I'm thinking about increasing the number of parameters the model can learn and also giving it more time to train itself. Stay tuned to see how it goes**.
 
 
 ## Installation
@@ -517,7 +521,7 @@ where :
 - difficulty_of_the_worlds_seeds : 0 for easy seeds, 1 for medium ones, 2 for hard ones and 3 for a mix
 The results will appear as CSV files in the results folder.
 
-Vizualize trajectories concerning the performances for the 300 test episodes:
+Vizualize trajectories concerning the performances for the 100 test episodes:
 ```bash
 python plots.py <csv_file_path>
 ```

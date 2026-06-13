@@ -118,15 +118,16 @@ jobs:
           chmod +x .github/ci/train.sh
 
           # Write environment variables for the systemd service
+          # No indentation inside the heredoc — leading spaces break variable parsing
           cat > /tmp/nanogoal-training.env << EOF
-          FLAG_FILE=$WORK_DIR/.github/ci/train.flag
-          SHA=${{ github.sha }}
-          BRANCH=${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
-          WORK_DIR=$WORK_DIR
-          GITHUB_TOKEN=${{ github.token }}
-          GITHUB_REPOSITORY=${{ github.repository }}
-          GH_TOKEN=${{ github.token }}
-          EOF
+FLAG_FILE=$WORK_DIR/.github/ci/train.flag
+SHA=${{ github.sha }}
+BRANCH=${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
+WORK_DIR=$WORK_DIR
+GITHUB_TOKEN=${{ github.token }}
+GITHUB_REPOSITORY=${{ github.repository }}
+GH_TOKEN=${{ github.token }}
+EOF
 
           # Start the systemd service — completely independent of this job
           sudo systemctl daemon-reload
