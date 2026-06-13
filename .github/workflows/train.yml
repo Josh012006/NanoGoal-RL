@@ -73,8 +73,9 @@ jobs:
       - name: Clean up previous training artifacts
         if: steps.read_flag.outputs.train == 'true'
         run: |
-          # Stop any running training service
+          # Stop any running training service and wait for shelve lock to release
           sudo systemctl stop nanogoal-training 2>/dev/null || true
+          sleep 3
           # Remove previous training logs and status files
           rm -f logs/train_*.log logs/train_*.DONE logs/train_*.FAILED logs/train_session.log
           echo "Cleaned up previous training artifacts."
