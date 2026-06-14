@@ -222,9 +222,7 @@ if [ -z "$(git status --porcelain)" ]; then
   log "No changes to commit."
 else
   git commit -m "feat: Trained models after commit of ID: $SHA [skip ci]"
-  git push \
-    https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git \
-    "HEAD:${BRANCH}"
+  git push origin "$BRANCH"
   log "Pushed to branch $BRANCH."
 fi
 

@@ -257,6 +257,27 @@ I trained the easy model for another **150,000,000 timesteps**. Medium worlds re
   <u><em>Evolution of reward during learning episodes</em></u>
 </p>
 
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="public/medium/success_rate.png" width="800" alt="success rate during learning"><br>
+      <u><em>Evolution of success rate during learning episodes</em></u>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="public/medium/explained_variance.png" width="800" alt="explained variance during learning"><br>
+      <u><em>Evolution of explained variance during learning — stays consistently above 0.92, indicating the value function learned well</em></u>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="public/medium/entropy_loss.png" width="800" alt="entropy loss during learning"><br>
+      <u><em>Evolution of entropy — rises as the pool of seeds expands and the agent explores more diverse strategies</em></u>
+    </td>
+  </tr>
+</table>
+
 <br />
 
 <table align="center">
@@ -364,6 +385,27 @@ For the last one I added **280,000,000 timesteps**. Hard worlds require the agen
   <img src="public/hard/reward_mean.png" width="800" alt="the reward mean during learning"><br>
   <u><em>Evolution of reward during learning episodes</em></u>
 </p>
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="public/hard/success_rate.png" width="800" alt="success rate during learning"><br>
+      <u><em>Evolution of success rate during learning episodes</em></u>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="public/hard/explained_variance.png" width="800" alt="explained variance during learning"><br>
+      <u><em>Evolution of explained variance during learning — stays consistently above 0.92, indicating the value function learned well</em></u>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="public/hard/entropy_loss.png" width="800" alt="entropy loss during learning"><br>
+      <u><em>Evolution of entropy — rises as the pool of seeds expands and the agent explores more diverse strategies</em></u>
+    </td>
+  </tr>
+</table>
 
 <br />
 
