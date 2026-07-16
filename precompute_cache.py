@@ -47,6 +47,16 @@ if __name__ == "__main__":
 
     environment = E.NanoEnv()
 
+    # NanoEnv's constructor opens topology_cache in read-only mode if the file
+    # already exists (this is what training/eval rely on). During a regeneration
+    # (generate_cache=true), that lingering read-only handle would block the
+    # write-mode shelve.open() below — GDBM refuses a second handle on the same
+    # file while another is open, raising "Resource temporarily unavailable".
+    # We don't need that handle here since we're about to rebuild the cache
+    # from scratch, so close it immediately.
+    if hasattr(environment._topology_cache, "close"):
+        environment._topology_cache.close()
+
     print(f"Precomputing {len(all_training_seeds)} seeds...")
 
     # shelve writes each entry directly to disk — no MemoryError on large datasets
