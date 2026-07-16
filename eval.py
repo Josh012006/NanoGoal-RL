@@ -1,12 +1,31 @@
 # A program to test the models and evaluate the results
 
+import argparse
 import json
 import env
 from stable_baselines3 import PPO
 import csv
 from pathlib import Path
 import numpy as np
-import sys
+
+DIFFICULTIES = ["easy", "medium", "hard"]
+SEED_MODES   = ["easy", "medium", "hard", "mix"]
+
+parser = argparse.ArgumentParser(
+    description="Evaluate a trained PPO model over 100 test episodes and save results as a CSV."
+)
+parser.add_argument(
+    "--model", required=True, choices=DIFFICULTIES,
+    help="Difficulty the model was trained for."
+)
+parser.add_argument(
+    "--seed", required=True, choices=SEED_MODES,
+    help="Difficulty of the world seeds to test on ('mix' combines all three categories)."
+)
+args = parser.parse_args()
+
+model_difficulty = args.model
+seed_mode        = args.seed
 
 
 with open("seeds.json") as f:
@@ -26,7 +45,7 @@ train_medium = _sample_category(_all_seeds["medium"])
 train_hard   = _sample_category(_all_seeds["hard"])
 
 # ── Test sets = seeds classified NOT used during training ──────────────
-_test_rng = np.random.default_rng(77777)  
+_test_rng = np.random.default_rng(77777)
 
 def _build_test_set(all_category, train_set, n=100):
     candidates = np.array([s for s in all_category if s not in train_set])
@@ -38,22 +57,23 @@ test_easy_seeds   = _build_test_set(_all_seeds["easy"],   train_easy)
 test_medium_seeds = _build_test_set(_all_seeds["medium"], train_medium)
 test_hard_seeds   = _build_test_set(_all_seeds["hard"],   train_hard)
 
-model_difficulty = int(sys.argv[1]) # 0 for easy, 1 for medium and 2 for hard
-difficulty_mode = int(sys.argv[2]) # 0 for easy, 1 for medium, 2 for hard and 3 for mix
-
+test_sets = {
+    "easy":   test_easy_seeds,
+    "medium": test_medium_seeds,
+    "hard":   test_hard_seeds,
+    "mix":    test_easy_seeds + test_medium_seeds + test_hard_seeds,
+}
 
 rng = np.random
-test_set = rng.permutation(test_easy_seeds if difficulty_mode == 0 else test_medium_seeds if difficulty_mode == 1 else test_hard_seeds if difficulty_mode == 2 else (test_easy_seeds + test_medium_seeds + test_hard_seeds))
-difficulty = "easy" if model_difficulty == 0 else "medium" if model_difficulty == 1 else "hard"
+test_set = rng.permutation(test_sets[seed_mode])
 
 myEnv = env.NanoEnv()
-model = PPO.load("models/ppo_nanogoal_" + difficulty, env=myEnv)
+model = PPO.load("models/ppo_nanogoal_" + model_difficulty, env=myEnv)
 
 
-folder = difficulty
+folder = model_difficulty
 Path("results/" + folder).mkdir(parents=True, exist_ok=True)
-termination = "easy" if difficulty_mode == 0 else "medium" if difficulty_mode == 1 else "hard" if difficulty_mode == 2 else "mix"
-with open("results/" + folder + "/ppo_eval_" + termination + ".csv", "w", newline="") as f:
+with open("results/" + folder + "/ppo_eval_" + seed_mode + ".csv", "w", newline="") as f:
     writer = csv.writer(f)
     writer.writerow(["episode", "seed", "return", "length", "success", "terminated", "truncated", "init_dist_goal", "best_dist_goal", "final_dist_goal"])
 
@@ -79,6 +99,6 @@ with open("results/" + folder + "/ppo_eval_" + termination + ".csv", "w", newlin
         success = info["is_success"]
         best_dist = info["best_dist"]
         final_dist = info["distance"]
-        
+
         # Save the results
         writer.writerow([episode, seed, total_reward, step, success, terminated, truncated, init_dist, best_dist, final_dist])

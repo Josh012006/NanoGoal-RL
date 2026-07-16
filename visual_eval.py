@@ -1,24 +1,42 @@
-# This code helps see the performance of the different trained models visually. It take
-# to arguments. The first one represents the difficulty for which the model was trained and the
-# second one is the difficulty of the seed used. We will use 0 for easy, 1 for medium and 2 for hard
-# in the two cases. 
+# This code helps see the performance of the different trained models visually.
+# It takes two named arguments: --model is the difficulty for which the model
+# was trained, and --seed is the difficulty of the world seed used for the episode.
 
+import argparse
 import env
-import sys
 from stable_baselines3 import PPO
 
+DIFFICULTIES = ["easy", "medium", "hard"]
 
-model_difficulty = int(sys.argv[1]) 
-seed_difficulty = int(sys.argv[2])
+parser = argparse.ArgumentParser(
+    description="Launch a single episode with visual rendering using a trained model."
+)
+parser.add_argument(
+    "--model", required=True, choices=DIFFICULTIES,
+    help="Difficulty the model was trained for."
+)
+parser.add_argument(
+    "--seed", required=True, choices=DIFFICULTIES,
+    help="Difficulty of the world seed to use for this episode."
+)
+args = parser.parse_args()
 
-models = ["ppo_nanogoal_easy", "ppo_nanogoal_medium", "ppo_nanogoal_hard"]
-seeds = [65, 2343, 950]
+models = {
+    "easy":   "ppo_nanogoal_easy",
+    "medium": "ppo_nanogoal_medium",
+    "hard":   "ppo_nanogoal_hard",
+}
+seeds = {
+    "easy":   1296,
+    "medium": 1520,
+    "hard":   2544,
+}
 
 myEnv = env.NanoEnv(render_mode="human")
-model = PPO.load("models/" + models[model_difficulty], env=myEnv)
+model = PPO.load("models/" + models[args.model], env=myEnv)
 
 # Reset environment to start a new episode
-observation, info = myEnv.reset(seed=seeds[seed_difficulty])
+observation, info = myEnv.reset(seed=seeds[args.seed])
 
 print(f"Starting observation: {observation}")
 

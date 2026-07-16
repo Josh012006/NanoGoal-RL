@@ -556,11 +556,11 @@ tensorboard --logdir logs/<hard_logs_folder>
 
 Test a trained model over 100 episodes:
 ```bash
-python eval.py <difficulty_the_model_was_trained_for> <difficulty_of_the_worlds_seeds>
+python eval.py --model {easy,medium,hard} --seed {easy,medium,hard,mix}
 ```
 where : 
-- difficulty_the_model_was_trained_for : 0 for easy, 1 for medium and 2 for hard
-- difficulty_of_the_worlds_seeds : 0 for easy seeds, 1 for medium ones, 2 for hard ones and 3 for a mix
+- `--model` : difficulty the model was trained for
+- `--seed` : difficulty of the world seeds to test on (`mix` combines all three categories)
 The results will appear as CSV files in the results folder.
 
 Vizualize trajectories concerning the performances for the 100 test episodes:
@@ -572,11 +572,11 @@ python plots.py <csv_file_path>
 
 Launch an episode with visual rendering with the trained agent:
 ```bash
-python visual_eval.py <difficulty_the_model_was_trained_for> <difficulty_of_the_world_seed>
+python visual_eval.py --model {easy,medium,hard} --seed {easy,medium,hard}
 ```
 where : 
-- difficulty_the_model_was_trained_for : 0 for easy, 1 for medium and 2 for hard
-- difficulty_of_the_worlds_seeds : 0 for the easy seed, 1 for the medium one and 2 for hard one
+- `--model` : difficulty the model was trained for
+- `--seed` : difficulty of the world seed to use for the episode
 
 ## Future work
 
