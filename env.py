@@ -271,9 +271,18 @@ class NanoEnv(gym.Env):
         computed = np.zeros(shape=(self._size, self._size))
         base = int(seed) if seed is not None else self.np_random.integers(25, 10000)
 
-        # Add more variety
-        gamma = self.np_random.uniform(1.1, 1.5)
-        ox, oy = self.np_random.uniform(0, 10000, size=2)
+        # IMPORTANT: use a dedicated RNG derived purely from `base`, NOT self.np_random.
+        # self.np_random is shared with agent/target/cell placement later in reset().
+        # If topology params were drawn from self.np_random, the number of draws
+        # consumed here (which varies with cache hit/miss and with how many fallback
+        # attempts were needed) would shift the RNG state before agent/target
+        # placement, making positions depend on cache state instead of purely on
+        # the seed. Using an independent RNG makes topology generation a pure,
+        # fully reproducible function of `base` alone, regardless of process,
+        # caching, or prior calls.
+        topo_rng = np.random.default_rng(base)
+        gamma = topo_rng.uniform(1.1, 1.5)
+        ox, oy = topo_rng.uniform(0, 10000, size=2)
 
         for i in range(self._size):
             for j in range(self._size):
@@ -282,7 +291,7 @@ class NanoEnv(gym.Env):
                 micro = 0.05 * pnoise2((j + ox) / 23, (i + oy) / 23, base=base + 999)
                 n = (((0.6 * n1 + 0.4 * n2) + 1) / 2 + micro) ** gamma
                 computed[i][j] = np.clip(n, 0.0, 1.0)
-        q = self.np_random.uniform(0.36, 0.44)
+        q = topo_rng.uniform(0.36, 0.44)
         t = np.quantile(computed, q)
         grid = (computed <= t).astype(int)
 
