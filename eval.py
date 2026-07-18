@@ -47,7 +47,7 @@ train_hard   = _sample_category(_all_seeds["hard"])
 # ── Test sets = seeds classified NOT used during training ──────────────
 _test_rng = np.random.default_rng(77777)
 
-def _build_test_set(all_category, train_set, n=100):
+def _build_test_set(all_category, train_set, n=500):
     candidates = np.array([s for s in all_category if s not in train_set])
     k          = min(n, len(candidates))
     idx        = _test_rng.choice(len(candidates), size=k, replace=False)
@@ -77,7 +77,7 @@ with open("results/" + folder + "/ppo_eval_" + seed_mode + ".csv", "w", newline=
     writer = csv.writer(f)
     writer.writerow(["episode", "seed", "return", "length", "success", "terminated", "truncated", "init_dist_goal", "best_dist_goal", "final_dist_goal"])
 
-    for episode in range(100):
+    for episode in range(500):
         seed = test_set[episode]
         obs, info = myEnv.reset(seed=seed)
         terminated = False

@@ -186,6 +186,19 @@ It lasted **50,000,000 timesteps** (~2.4 days). Easy worlds require no wall deto
   </tr>
 </table>
 
+<br />
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="plots/easy/terminated-truncated.png" width="600"
+           alt="Termination to truncation ratio">
+      <br>
+      <u><em>Termination to truncation ratio per episode</em></u>
+    </td>
+  </tr>
+</table>
+
 
 But I knew he could do more than that. But first before going to the medium and hard modes, I wanted to make sure that there would really be some learning being done.
 So I tested **Toddler Billy** on medium and hard tests sets. I only present here the return and distance plots :
@@ -316,6 +329,19 @@ I trained the easy model for another **150,000,000 timesteps**. Medium worlds re
   </tr>
 </table>
 
+<br />
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="plots/medium/terminated-truncated.png" width="600"
+           alt="Termination to truncation ratio">
+      <br>
+      <u><em>Termination to truncation ratio per episode</em></u>
+    </td>
+  </tr>
+</table>
+
 
 This time I tested **Middle schooler Billy** on easy and hard tests sets too. We can clearly see more precision on the easy mode and even a somewhat satisfying performance on hard levels. But it still needs some improvements for the hard level. And that's what we are doing next.
 
@@ -441,6 +467,19 @@ For the last one I added **280,000,000 timesteps**. Hard worlds require the agen
            alt="Regret distribution">
       <br>
       <u><em>Regret distribution</em></u>
+    </td>
+  </tr>
+</table>
+
+<br />
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="plots/hard/terminated-truncated.png" width="600"
+           alt="Termination and truncation ratio">
+      <br>
+      <u><em>Termination to truncation ratio per episode</em></u>
     </td>
   </tr>
 </table>
