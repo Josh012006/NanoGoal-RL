@@ -191,8 +191,8 @@ class NanoEnv(gym.Env):
         start = float(self._agent_radius) * 1.05
 
         for k, a in enumerate(angles):
-            dx = float(np.cos(a))
-            dy = float(np.sin(a))
+            dx = float(np.sin(a))
+            dy = float(-np.cos(a))
 
             dist = start
 
@@ -237,7 +237,7 @@ class NanoEnv(gym.Env):
             "mvt" : np.array([
                     self._velocity / self._max_v, 
                     np.sin(self._orientation), 
-                    np.cos(self._orientation)
+                    -np.cos(self._orientation)
                 ], 
                 dtype=np.float32
             ),
@@ -599,8 +599,10 @@ class NanoEnv(gym.Env):
         # ── 2. MOVEMENT ───────────────────────────────────────────────────────────
         # Compute velocity vector (agent propulsion + blood flow drift)
         v_agent = np.array(
-            [self._velocity * np.sin(self._orientation),
-            self._velocity * np.cos(self._orientation)],
+            [
+                -self._velocity * np.cos(self._orientation),
+                self._velocity * np.sin(self._orientation)
+            ],
             dtype=np.float32
         )
         old_agent_location = self._agent_location.copy()
@@ -697,8 +699,8 @@ class NanoEnv(gym.Env):
     def _render_frame(self):
         """This is a function to render the environment. It represents the elements in the pygame coordinate system. So the
         center is at the top left corner, the x-axis increases as we go further to the right and the y-axis increases as we go further down.
-        Concerning the orientation, now a positive orientation rotates the element clockwise instead of counterclockwise to keep the logic
-        consistent with the orientation of the axes.
+        Concerning the orientation, 0 radians corresponds to pointing upward.
+        Positive orientation values rotate the agent clockwise.
         """
         if self._window is None and self.render_mode == "human":
             pygame.init()
@@ -741,12 +743,6 @@ class NanoEnv(gym.Env):
             tuple(((self._target_location[::-1] + 0.5) * self.__pix_square_size).astype(int)),
             int(np.ceil(self._target_radius * self.__pix_square_size))
         )
-        # Now we draw the agent with the appropriate orientation
-        angle_deg = -np.degrees(self._orientation)
-        rotated_img = pygame.transform.rotate(self._agent_img, angle_deg)
-        center = ((self._agent_location[::-1] + 0.5) * self.__pix_square_size).astype(int)
-        rect = rotated_img.get_rect(center=tuple(center))
-        canvas.blit(rotated_img, rect)
 
         # Red and white blood cells rendering
         for red_cell in self._red_cells:
@@ -765,11 +761,23 @@ class NanoEnv(gym.Env):
                 int(np.ceil(self._cell_radius * self.__pix_square_size))
             )
 
+        # Draw the agent
+
+        angle_deg = -np.degrees(self._orientation)
+        rotated_img = pygame.transform.rotate(self._agent_img, angle_deg)
+        center = ((self._agent_location[::-1] + 0.5) * self.__pix_square_size).astype(int)
+        rect = rotated_img.get_rect(center=tuple(center))
+
+        canvas.blit(rotated_img, rect)
+
 
         if self.render_mode == "human":
             # The following line copies our drawings from `canvas` to the visible window
             self._window.blit(canvas, canvas.get_rect())
-            pygame.event.pump()
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.close()
+                    raise KeyboardInterrupt
             pygame.display.update()
 
             # We need to ensure that human-rendering occurs at the predefined framerate.
@@ -785,6 +793,9 @@ class NanoEnv(gym.Env):
         if self._window is not None:
             pygame.display.quit()
             pygame.quit()
+        
+        self._window = None
+        self._clock = None
 
 
 

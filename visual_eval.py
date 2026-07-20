@@ -1,7 +1,7 @@
 # This code helps see the performance of the different trained models visually.
 # It takes two named arguments: --model is the difficulty for which the model
 # was trained, and --seed is the difficulty of the world seed used for the episode.
-
+import numpy as np
 import argparse
 import env
 from stable_baselines3 import PPO
@@ -27,7 +27,7 @@ models = {
     "hard":   "ppo_nanogoal_hard",
 }
 seeds = {
-    "easy":   1296,
+    "easy":   6568, #1296,
     "medium": 1520,
     "hard":   2544,
 }
@@ -43,13 +43,25 @@ print(f"Starting observation: {observation}")
 episode_over = False
 total_reward = 0
 
-while not episode_over:
-    action, _ = model.predict(observation, deterministic=True)
+try:
+    while not episode_over:
+        action, _ = model.predict(observation, deterministic=True)
 
-    observation, reward, terminated, truncated, info = myEnv.step(action)
+        observation, reward, terminated, truncated, info = myEnv.step(action)
 
-    total_reward += reward
-    episode_over = terminated or truncated
+        total_reward += reward
+        episode_over = terminated or truncated
+        print(
+            "orientation:",
+            np.degrees(myEnv._orientation),
+            "direction:",
+            myEnv._get_obs()["mvt"][1:]
+        )
 
-print(f"Episode finished! Total reward: {total_reward}")
-myEnv.close()
+    print(f"Episode finished! Total reward: {total_reward}")
+
+except KeyboardInterrupt:
+    print("Evaluation stopped by user.")
+
+finally:
+    myEnv.close()
