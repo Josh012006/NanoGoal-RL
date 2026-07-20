@@ -29,7 +29,6 @@ ml_dtypes==0.5.4
 mpmath==1.3.0
 namex==0.1.0
 networkx==3.6.1
-noise==1.2.2
 numpy==2.4.0
 opt_einsum==3.4.0
 optree==0.18.0

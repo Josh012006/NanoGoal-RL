@@ -5,7 +5,7 @@ import gymnasium as gym
 import numpy as np
 import pygame
 import json
-from noise import pnoise2
+from perlin_noise import fbm2d
 from utils import main_related_component, is_navigable
 
 from gymnasium.envs.registration import register
@@ -191,8 +191,12 @@ class NanoEnv(gym.Env):
         start = float(self._agent_radius) * 1.05
 
         for k, a in enumerate(angles):
-            dx = float(np.sin(a))
-            dy = float(-np.cos(a))
+            # Aligned with the movement direction formula used in step()
+            # (v_agent = [-v*cos(orientation), v*sin(orientation)]), so ray k=0
+            # (a == self._orientation) points exactly straight ahead instead
+            # of 90 degrees off from the true heading.
+            dx = float(-np.cos(a))
+            dy = float(np.sin(a))
 
             dist = start
 
@@ -263,12 +267,15 @@ class NanoEnv(gym.Env):
 
     def _generate_logical_topology(self, seed: Optional[int] = None):
         """Generates a size x size matrix describing the vessel's topology. It must be a valid topology
-            but it must also have a bit of diversity (randomness). It uses Perlin's noise.
-        
+            but it must also have a bit of diversity (randomness). It uses fractal Perlin noise
+            (see perlin_noise.py — a fully deterministic, vectorized, pure-numpy implementation;
+            the third-party `noise` package was found to be non-deterministic across separate
+            process launches for some (base, octaves) combinations, which silently corrupted
+            seed-based difficulty classification).
+
         Returns:
             matrix: a numpy array describing the generated topology
         """
-        computed = np.zeros(shape=(self._size, self._size))
         base = int(seed) if seed is not None else self.np_random.integers(25, 10000)
 
         # IMPORTANT: use a dedicated RNG derived purely from `base`, NOT self.np_random.
@@ -284,13 +291,20 @@ class NanoEnv(gym.Env):
         gamma = topo_rng.uniform(1.1, 1.5)
         ox, oy = topo_rng.uniform(0, 10000, size=2)
 
-        for i in range(self._size):
-            for j in range(self._size):
-                n1 = pnoise2((j + ox)/153, (i + oy)/153, base=base, octaves=4, persistence=0.5, lacunarity=2.0)
-                n2 = pnoise2((j + ox)/67, (i + oy)/67, base=(base + 1337), octaves=6, persistence=0.5, lacunarity=2.0)
-                micro = 0.05 * pnoise2((j + ox) / 23, (i + oy) / 23, base=base + 999)
-                n = (((0.6 * n1 + 0.4 * n2) + 1) / 2 + micro) ** gamma
-                computed[i][j] = np.clip(n, 0.0, 1.0)
+        # Vectorized coordinate grids (i = row, j = col) — computes the whole
+        # grid in one shot instead of looping cell by cell in Python.
+        jj, ii = np.meshgrid(np.arange(self._size), np.arange(self._size))
+        x1, y1 = (jj + ox) / 153.0, (ii + oy) / 153.0
+        x2, y2 = (jj + ox) / 67.0,  (ii + oy) / 67.0
+        x3, y3 = (jj + ox) / 23.0,  (ii + oy) / 23.0
+
+        n1 = fbm2d(x1, y1, base=base,        octaves=4, persistence=0.5, lacunarity=2.0)
+        n2 = fbm2d(x2, y2, base=base + 1337, octaves=6, persistence=0.5, lacunarity=2.0)
+        micro = 0.05 * fbm2d(x3, y3, base=base + 999, octaves=1)
+
+        n = (((0.6 * n1 + 0.4 * n2) + 1) / 2 + micro) ** gamma
+        computed = np.clip(n, 0.0, 1.0)
+
         q = topo_rng.uniform(0.36, 0.44)
         t = np.quantile(computed, q)
         grid = (computed <= t).astype(int)
@@ -474,9 +488,15 @@ class NanoEnv(gym.Env):
                 
 
 
-        # Velocity and orientation at the start of an episode
+        # Velocity and orientation at the start of an episode.
+        # Orientation starts facing directly toward the target (rather than a
+        # fixed, arbitrary heading) so that any wall-avoidance turning the
+        # agent must learn reflects the topology's true complexity, not an
+        # unrelated "correct my initial heading" maneuver baked into every
+        # episode regardless of difficulty.
         self._velocity = 0.0
-        self._orientation = 0.0
+        delta = self._target_location - self._agent_location
+        self._orientation = float(np.arctan2(delta[1], -delta[0]))
 
         # Set the time limit 
         self.__timelimit = min(3 + 2 * self.__initial_distance, 40)
