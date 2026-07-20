@@ -27,9 +27,9 @@ models = {
     "hard":   "ppo_nanogoal_hard",
 }
 seeds = {
-    "easy":   6568, #1296,
-    "medium": 1520,
-    "hard":   2544,
+    "easy":   1520,
+    "medium": 6568,
+    "hard":   1296,
 }
 
 myEnv = env.NanoEnv(render_mode="human")
