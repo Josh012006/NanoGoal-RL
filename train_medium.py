@@ -1,4 +1,16 @@
 import os
+import torch
+
+# Force single-threaded, bit-reproducible PyTorch computation. Multi-threaded
+# BLAS/OpenMP reductions (matrix multiplies inside the policy network) are NOT
+# guaranteed bit-identical run to run, even on the same machine, because the
+# order partial sums from different threads get combined depends on OS thread
+# scheduling. In this environment, tiny floating-point differences can flip a
+# discrete decision (e.g. which side of a wall-collision branch is taken),
+# which then compounds over the episode into a completely different rollout.
+# This must be set before any PPO model is created or loaded.
+torch.set_num_threads(1)
+
 import env
 
 from stable_baselines3.common.env_util import make_vec_env
