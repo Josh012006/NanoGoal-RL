@@ -4,6 +4,7 @@ import env
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import SubprocVecEnv
+from stable_baselines3.common.callbacks import CallbackList
 from stable_baselines3 import PPO
 from checkpoint_callback import KeepLastTwoCheckpoints
 
@@ -39,6 +40,36 @@ if __name__ == "__main__":
         name_prefix="ppo_easy"
     )
 
+    # ── Optional Weights & Biases logging ─────────────────────────────────────
+    # Lets training be monitored remotely from wandb.ai while it runs on the
+    # droplet, in addition to TensorBoard. sync_tensorboard=True reuses the
+    # exact same metrics already written to tensorboard_log below, so no
+    # separate logging code is needed. If wandb isn't configured (no
+    # WANDB_API_KEY, no network), training still proceeds normally with
+    # TensorBoard alone — this must never be able to crash a training run.
+    wandb_run = None
+    wandb_callback = None
+    try:
+        import wandb
+        from wandb.integration.sb3 import WandbCallback
+
+        wandb_run = wandb.init(
+            project="nanogoal-rl",
+            name=f"easy_{run_id}",
+            group=run_id,
+            job_type="easy",
+            dir="./logs",
+            sync_tensorboard=True,
+        )
+        wandb_callback = WandbCallback(verbose=2)
+        print("wandb logging enabled.")
+    except Exception as e:
+        print(f"wandb unavailable, continuing with TensorBoard only: {e}")
+
+    callbacks = [checkpoint_callback]
+    if wandb_callback is not None:
+        callbacks.append(wandb_callback)
+
     # Define and train the agent
     # n_epochs=10 (default) — learns quickly on fresh data
     model = PPO(
@@ -54,8 +85,11 @@ if __name__ == "__main__":
     model.learn(
         total_timesteps=50_000_000,
         tb_log_name="easy",
-        callback=checkpoint_callback
+        callback=CallbackList(callbacks)
     )
 
     # Save the trained agent
     model.save("models/ppo_nanogoal_easy")
+
+    if wandb_run is not None:
+        wandb_run.finish()
