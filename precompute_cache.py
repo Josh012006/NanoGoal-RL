@@ -6,6 +6,7 @@
 #   - the filtered available space (np.ndarray of shape (N, 2))
 
 import json
+import os
 import shelve
 import numpy as np
 import env as E
@@ -38,6 +39,22 @@ def precompute(seed: int, environment: E.NanoEnv):
 
 
 if __name__ == "__main__":
+    import glob
+
+    # Always start from a completely blank cache file. shelve.open("topology_cache")
+    # with the default mode only ADDS/UPDATES keys on top of whatever is already on
+    # disk -- it never wipes the file. If a previous run of this script (or of
+    # anything else that opened the file for writing) was ever killed mid-write
+    # (this has happened before: a GDBM lock error, apt-daily-upgrade killing
+    # processes, a full disk), the underlying file can be left with residual
+    # corruption that silently survives every subsequent "regeneration", since
+    # regeneration never actually starts from a clean slate. Deleting the files
+    # up front guarantees this cache is always built fresh, with zero chance of
+    # inheriting corruption from an unrelated past crash.
+    for f in glob.glob("topology_cache*"):
+        os.remove(f)
+        print(f"Removed pre-existing cache file: {f}")
+
     with open("seeds.json") as f:
         all_seeds = json.load(f)
 
