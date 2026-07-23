@@ -91,7 +91,8 @@ if __name__ == "__main__":
         tensorboard_log="./logs/",
         n_steps=n_steps,
         batch_size=200,
-        n_epochs=10
+        n_epochs=10,
+        device="cpu"  # avoid CPU/GPU non-determinism: never auto-select CUDA
     )
 
     model.learn(

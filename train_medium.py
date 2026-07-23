@@ -82,7 +82,8 @@ if __name__ == "__main__":
     model = PPO.load(
         "models/ppo_nanogoal_easy",
         env=vec_env,
-        custom_objects={"n_steps": n_steps, "learning_rate": 1e-4, "n_epochs": 15}
+        custom_objects={"n_steps": n_steps, "learning_rate": 1e-4, "n_epochs": 15},
+        device="cpu"  # avoid CPU/GPU non-determinism: never auto-select CUDA
     )
 
     model.learn(

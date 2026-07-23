@@ -51,7 +51,7 @@ default_seeds = {
 chosen_seed = args.seed_value if args.seed_value is not None else default_seeds[args.seed]
 
 myEnv = env.NanoEnv(render_mode="human")
-model = PPO.load("models/" + models[args.model], env=myEnv)
+model = PPO.load("models/" + models[args.model], env=myEnv, device="cpu")  # avoid CPU/GPU non-determinism
 
 # Reset environment to start a new episode
 observation, info = myEnv.reset(seed=chosen_seed)

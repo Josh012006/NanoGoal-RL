@@ -76,8 +76,14 @@ test_sets = {
     "mix":    test_easy_seeds + test_medium_seeds + test_hard_seeds,
 }
 
-rng = np.random
-test_set = rng.permutation(test_sets[seed_mode])
+# Fixed seed so the TESTING ORDER is also reproducible run to run, not just
+# the set of seeds tested. Previously this used the unseeded global np.random
+# module, meaning two separate eval.py runs would test the same 500 seeds but
+# in a different order each time -- harmless for aggregate stats, but it made
+# comparing two runs row-by-row (e.g. to verify reproducibility) misleading,
+# since "episode 0" wasn't the same seed between runs.
+_shuffle_rng = np.random.default_rng(24680)
+test_set = _shuffle_rng.permutation(test_sets[seed_mode])
 
 myEnv = env.NanoEnv()
 model = PPO.load("models/ppo_nanogoal_" + model_difficulty, env=myEnv)
