@@ -17,9 +17,18 @@ RUN_ID="$(date -u '+%Y%m%d_%H%M%S')_${SHA:0:7}"
 export RUN_ID
 log_prefix="[run:$RUN_ID]"
 
-# ── Load SendGrid config ───────────────────────────────────────────────────────
+# ── Load SendGrid / WandB config ──────────────────────────────────────────────
+# `set -a` makes every variable set while sourcing this file automatically
+# exported, so it's inherited by CHILD PROCESSES too (train_easy.py,
+# eval.py, etc., launched later as `$VENV/python ...`) -- not just visible
+# within this script. Without it, a plain `VAR=value` line in the config file
+# only becomes a shell variable of THIS script, invisible to any subprocess.
+# This is why SENDGRID_API_KEY worked (send_email()'s curl runs in this same
+# shell) while WANDB_API_KEY silently failed to reach the python process.
 if [ -f ~/.sendgrid_config ]; then
+  set -a
   source ~/.sendgrid_config
+  set +a
 fi
 NOTIFY_EMAIL="josuesmjr.mongan@gmail.com"
 FROM_EMAIL="josuesmjr.mongan@gmail.com"
