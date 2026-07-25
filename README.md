@@ -114,13 +114,16 @@ Several infrastructure and training improvements were made for this version:
 - **Larger rollout buffer**: `n_steps` was doubled to 20,000 per environment to reduce the proportion of time spent in backpropagation relative to rollout collection, keeping both CPUs more consistently busy.
 - **Increased n_epochs by difficulty**: easy uses `n_epochs=10` (default), medium uses `n_epochs=15`, and hard uses `n_epochs=20`. More passes per rollout allow the model to extract more signal from complex episodes, acting as an implicit replay ratio increase for harder stages.
 - **Automated CI/CD training pipeline**: training is now triggered via GitHub Actions and runs as a systemd service on a self-hosted Digital Ocean droplet, completely decoupled from the runner lifecycle. The pipeline handles dependency installation, cache management, training, evaluation, plot generation, and commits results automatically. Email notifications are sent at key training milestones via SendGrid.
+- **Deterministic topology generation**: the third-party `noise` package was found to produce non-deterministic output across separate process launches for certain (base, octaves) combinations, silently corrupting seed-based difficulty classification and reproducibility. It was replaced with `perlin_noise.py`, a fully deterministic, vectorized, pure-numpy implementation — also ~25× faster.
+- **Critical bug fix in the topology cache builder**: `precompute_cache.py`'s clearance filter was checking wall proximity against an empty (all-zero) topology instead of the seed's actual generated topology, because the generated topology was never assigned to the environment instance before filtering. This silently gave every cached seed a wrong `available_space` (different count and content than a correct fresh computation), which cascaded into different agent/target/cell placements whenever a seed was served from the cache — making training and evaluation results irreproducible in a way that was very difficult to trace back to its source. Fixed by assigning the topology to the environment before filtering, matching `env.py`'s own reset() logic exactly.
+- **Trajectory visualization**: the agent's full path is now drawn as a dashed line during rendering, making it much easier to visually assess how it navigates toward the goal (or gets stuck) over the course of an episode.
 
 ## The results of the training (see `eval.py` for the evaluation code)
 
 When all the changes were done, I started training the model. After each training I plotted some interesting relationships between the results parameters.
 
 ### Easy mode training
-It lasted **50,000,000 timesteps** (~2.4 days). Easy worlds require no wall detours — the agent only needs to learn to navigate in a near-straight line toward the target. After this stage, **Billy** was able to succeed for more than half of the easy worlds of the test set.
+It lasted **12,000,000 timesteps** (~14 hours) — training was stopped early once TensorBoard/WandB metrics showed the model had already converged, well short of the original 50,000,000 timestep budget. Easy worlds require no wall detours — the agent only needs to learn to navigate in a near-straight line toward the target. After this stage, **Billy** was able to succeed for more than half of the easy worlds of the test set.
 
 <p align="center">
   <img src="public/easy/reward_mean.png" width="800" alt="the reward mean during learning"><br>
@@ -616,6 +619,16 @@ python visual_eval.py --model {easy,medium,hard} --seed {easy,medium,hard}
 where : 
 - `--model` : difficulty the model was trained for
 - `--seed` : difficulty of the world seed to use for the episode
+
+To inspect one exact seed instead (e.g. a seed pulled from a results CSV):
+```bash
+python visual_eval.py --model easy --seed_value 3271
+```
+
+Every episode is also saved as an animated GIF in `videos/`, whether or not a real display is attached — on a headless server, set `SDL_VIDEODRIVER=dummy` first so pygame doesn't try to open a real window:
+```bash
+SDL_VIDEODRIVER=dummy python visual_eval.py --model easy --seed_value 3271
+```
 
 ## Future work
 

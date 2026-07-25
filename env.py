@@ -109,6 +109,7 @@ class NanoEnv(gym.Env):
         self._agent_location = np.array([-1, -1], dtype=np.float32)
         self._target_location = np.array([-1, -1], dtype=np.float32)
         self.__initial_distance = 0
+        self._agent_trail = []  # visited positions, drawn as a dotted trail when rendering
 
         # Blood and white cells initial locations
         self._red_cells = np.full(shape=(max_red, 2), fill_value=-1, dtype=np.float32)
@@ -468,6 +469,10 @@ class NanoEnv(gym.Env):
         self._agent_location = init_agent_location
         available_space.pop(agent_int)
 
+        # Trail of visited positions, drawn as a permanent dotted line during
+        # rendering so the agent's full path through the episode stays visible.
+        self._agent_trail = [self._agent_location.copy()]
+
         repeat2    = True
         to_explore = available_space.copy()
         while repeat2 and len(to_explore) != 0:
@@ -636,6 +641,7 @@ class NanoEnv(gym.Env):
         self._agent_location = self._manage_wall_collision(
             self._agent_location, new_agent_location, self._agent_radius
         )
+        self._agent_trail.append(self._agent_location.copy())
 
         # Move blood cells (purely advected by the blood flow)
         for i in range(self._nb_red):
@@ -773,6 +779,23 @@ class NanoEnv(gym.Env):
                         (size_px, size_px),
                     ),
                 )
+
+        # Draw the agent's trail as a dashed blue line: connect consecutive
+        # visited positions in short segments, skipping every other segment
+        # to create the dashed look (instead of isolated dots, this follows
+        # the actual path curvature). Drawn after the walls but before
+        # target/cells/agent so it stays visually "on the ground".
+        dash_length = 5
+        trail_width = max(2, int(self.__pix_square_size * 0.25))
+        for start in range(0, len(self._agent_trail) - 1, dash_length * 2):
+            end = min(start + dash_length, len(self._agent_trail))
+            if end - start < 2:
+                continue
+            points = [
+                tuple(((p[::-1] + 0.5) * self.__pix_square_size).astype(int))
+                for p in self._agent_trail[start:end]
+            ]
+            pygame.draw.lines(canvas, (20, 100, 40), False, points, width=trail_width)
 
         # First we draw the target
         # Convert [row, col] to pygame (x, y) by reversing the coordinates
