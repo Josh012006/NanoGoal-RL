@@ -147,6 +147,7 @@ class NanoEnv(gym.Env):
         # The window and the clock we will use for rendering
         self._window = None 
         self._clock = None
+        self._last_frame = None
 
 
         # What the agent can observe
@@ -529,8 +530,13 @@ class NanoEnv(gym.Env):
         observation = self._get_obs()
         info = self._get_info()
 
-        if self.render_mode == "human":
-            self._render_frame()
+        if self.render_mode is not None:
+            # Store every frame so callers (e.g. visual_eval.py) can build a
+            # full-episode GIF just by reading self._last_frame after each
+            # reset()/step() call, without needing a second, duplicate render
+            # pass. Works the same whether render_mode is "human" (live
+            # window) or "rgb_array" (headless, no window at all).
+            self._last_frame = self._render_frame()
 
         return observation, info
     
@@ -705,14 +711,14 @@ class NanoEnv(gym.Env):
         observation  = self._get_obs()
         info         = self._get_info()
 
-        if self.render_mode == "human":
-            self._render_frame()
+        if self.render_mode is not None:
+            self._last_frame = self._render_frame()
 
         return observation, float(reward), terminated, truncated, info
     
 
     def render(self):
-        if self.render_mode == "rgb_array":
+        if self.render_mode is not None:
             return self._render_frame()
 
 
@@ -728,7 +734,20 @@ class NanoEnv(gym.Env):
             self._window = pygame.display.set_mode(
                 (self._window_size, self._window_size)
             )
-            
+
+        if not hasattr(self, "_agent_img"):
+            # Needed for BOTH "human" and "rgb_array" render modes -- must not
+            # live inside the "human"-only block above, or rendering in
+            # "rgb_array" mode (e.g. for headless frame capture on a server
+            # with no display) crashes with AttributeError since self._agent_img
+            # would never get set. convert_alpha() requires pygame's video
+            # subsystem to be initialized even if no window is ever shown, so
+            # we set up a minimal display context here if one doesn't exist yet
+            # (works headlessly with SDL_VIDEODRIVER=dummy).
+            if not pygame.display.get_init():
+                pygame.init()
+                pygame.display.init()
+                pygame.display.set_mode((1, 1))
             self._agent_img = pygame.image.load("assets/agent.png").convert_alpha()
             rect = self._agent_img.get_bounding_rect(min_alpha=10)
             self._agent_img = self._agent_img.subsurface(rect).copy()
@@ -791,6 +810,15 @@ class NanoEnv(gym.Env):
         canvas.blit(rotated_img, rect)
 
 
+        # Always extract the pixel array from the off-screen canvas, regardless
+        # of render_mode. This is what lets us capture every frame for saving
+        # an episode as a GIF even in "human" mode (live window), and even
+        # headlessly with no real display attached (SDL_VIDEODRIVER=dummy
+        # still provides a valid off-screen canvas to read pixels from).
+        frame = np.transpose(
+            np.array(pygame.surfarray.pixels3d(canvas)), axes=(1, 0, 2)
+        )
+
         if self.render_mode == "human":
             # The following line copies our drawings from `canvas` to the visible window
             self._window.blit(canvas, canvas.get_rect())
@@ -803,10 +831,8 @@ class NanoEnv(gym.Env):
             # We need to ensure that human-rendering occurs at the predefined framerate.
             # The following line will automatically add a delay to keep the framerate stable.
             self._clock.tick(self.metadata["render_fps"])
-        else:  # rgb_array
-            return np.transpose(
-                np.array(pygame.surfarray.pixels3d(canvas)), axes=(1, 0, 2)
-            )
+
+        return frame
         
     
     def close(self):
