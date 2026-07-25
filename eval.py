@@ -86,7 +86,7 @@ _shuffle_rng = np.random.default_rng(24680)
 test_set = _shuffle_rng.permutation(test_sets[seed_mode])
 
 myEnv = env.NanoEnv()
-model = PPO.load("models/ppo_nanogoal_" + model_difficulty, env=myEnv)
+model = PPO.load("models/ppo_nanogoal_" + model_difficulty, env=myEnv, device="cpu")  # avoid CPU/GPU non-determinism
 
 
 folder = model_difficulty

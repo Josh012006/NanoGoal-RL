@@ -18,7 +18,7 @@ MODE         = int(sys.argv[3])  # 0, 1 or 2 for easy, medium and hard respectiv
 TEXT_MODE    = "easy" if MODE == 0 else "medium" if MODE == 1 else "hard"
 
 # Tells if the mode difficulty is the same as the model used — optional, default True
-SAME_MODEL = True if len(sys.argv) == 4 else sys.argv[4]
+SAME_MODEL = True if len(sys.argv) == 4 else bool(int(sys.argv[4]))
 
 # ---------- load ----------
 df = pd.read_csv(CSV_PATH)
