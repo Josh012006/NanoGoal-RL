@@ -24,6 +24,18 @@ def precompute(seed: int, environment: E.NanoEnv):
     new_seed = 1 + int(seed)
     while True:
         topology  = environment._generate_logical_topology(new_seed)
+        # CRITICAL: _filter_by_clearance() internally checks walls via
+        # self._vessel_topology (not a parameter it's passed!). Without this
+        # assignment, clearance was being checked against whatever topology
+        # happened to be left over on `environment` (all-zeros / no walls at
+        # all for a fresh instance), not the topology just generated above.
+        # This silently produced a WRONG available_space for every single
+        # cached seed -- different length and content than a correct fresh
+        # computation -- which cascaded into completely different agent/
+        # target placements for any seed served from this cache, compared to
+        # env.py's own (correct) fallback path. This one-line fix makes the
+        # cache match env.py's reset() logic exactly.
+        environment._vessel_topology = topology
         available = main_related_component(topology)
         available = environment._filter_by_clearance(
             available,
