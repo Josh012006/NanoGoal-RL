@@ -71,7 +71,6 @@ The implementation relies on standard RL libraries to ensure reproducibility and
 - Gymnasium
 - Stable-Baselines3
 - TensorBoard
-- Tensorflow
 - Matplotlib
 - Pandas
 - Pygame
@@ -123,7 +122,7 @@ Several infrastructure and training improvements were made for this version:
 When all the changes were done, I started training the model. After each training I plotted some interesting relationships between the results parameters.
 
 ### Easy mode training
-It lasted **12,000,000 timesteps** (~14 hours) — training was stopped early once TensorBoard/WandB metrics showed the model had already converged, well short of the original 50,000,000 timestep budget. Easy worlds require no wall detours — the agent only needs to learn to navigate in a near-straight line toward the target. After this stage, **Billy** was able to succeed for more than half of the easy worlds of the test set.
+It lasted **12,000,000 timesteps** (~10 hours) — training was stopped early once TensorBoard/WandB metrics showed the model had already converged, well short of the original 50,000,000 timestep budget. Easy worlds require no wall detours — the agent only needs to learn to navigate in a near-straight line toward the target. After this stage, **Billy** was able to succeed for more than half of the easy worlds of the test set.
 
 <p align="center">
   <img src="public/easy/reward_mean.png" width="800" alt="the reward mean during learning"><br>
@@ -266,7 +265,7 @@ So I tested **Toddler Billy** on medium and hard tests sets. I only present here
 <br />
 
 ### Medium mode training
-I trained the easy model for another **150,000,000 timesteps**. Medium worlds require the agent to navigate around 1 to 2 significant obstacles — it must learn when to turn and how to recover its heading after a detour.
+I trained the easy model for another **150,000,000 timesteps** but this time on medium level seeds. Medium worlds require the agent to navigate around 1 to 2 significant obstacles — it must learn when to turn and how to recover its heading after a detour.
 
 <p align="center">
   <img src="public/medium/reward_mean.png" width="800" alt="the reward mean during learning"><br>
@@ -408,7 +407,7 @@ This time I tested **Middle schooler Billy** on easy and hard tests sets too. We
 <br />
 
 ### Hard mode training
-For the last one I added **280,000,000 timesteps**. Hard worlds require the agent to combine everything it has learned — navigating around multiple significant obstacles (> 270° total angular deviation) while maintaining directional progress toward a distant goal.
+For the last one I added **300,000,000 timesteps**. Hard worlds require the agent to combine everything it has learned — navigating around multiple significant obstacles (> 270° total angular deviation) while maintaining directional progress toward a distant goal.
 
 <p align="center">
   <img src="public/hard/reward_mean.png" width="800" alt="the reward mean during learning"><br>
