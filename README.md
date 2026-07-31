@@ -265,7 +265,7 @@ So I tested **Toddler Billy** on medium and hard tests sets. I only present here
 <br />
 
 ### Medium mode training
-I trained the easy model for another **150,000,000 timesteps** but this time on medium level seeds. Medium worlds require the agent to navigate around 1 to 2 significant obstacles — it must learn when to turn and how to recover its heading after a detour.
+I trained the easy model for another **150,000,000 timesteps** (~5 days) but this time on medium level seeds. Medium worlds require the agent to navigate around 1 to 2 significant obstacles — it must learn when to turn and how to recover its heading after a detour.
 
 <p align="center">
   <img src="public/medium/reward_mean.png" width="800" alt="the reward mean during learning"><br>
@@ -549,7 +549,7 @@ Lastly, I tested **High schooler Billy** on easy and medium tests sets too to ma
 ## Installation
 
 ```bash
-git clone https://github.com/your-username/NanoGoal-RL.git
+git clone https://github.com/Josh012006/NanoGoal-RL.git
 cd NanoGoal-RL
 python3 -m venv venv
 source venv/bin/activate
