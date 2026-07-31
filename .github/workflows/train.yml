@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   train:
-    runs-on: [self-hosted, linux, cpu]
+    runs-on: [self-hosted, linux]
     timeout-minutes: 720
 
     env:
