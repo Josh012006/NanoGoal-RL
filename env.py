@@ -21,7 +21,8 @@ class NanoEnv(gym.Env):
         difficulty: Optional[Difficulty] = None, 
         max_v: float = 6.0, 
         max_red: int = 8, 
-        max_white: int = 4
+        max_white: int = 4,
+        worker_seed_offset: int = 0
     ):
         """Initialize the NanoEnv environment.
         Args:
@@ -30,11 +31,24 @@ class NanoEnv(gym.Env):
             max_v: The maximum velocity of the agent in cell units per second.
             max_red: The maximum number of red cells in the environment. Red cells are obstacles that reduce the agent's velocity when it collides with them.
             max_white: The maximum number of white cells in the environment. White cells are obstacles that reduce the agent's velocity more than red cells when it collides with them.
+            worker_seed_offset: When training with multiple parallel environments
+                (SubprocVecEnv), each worker process constructs its own NanoEnv
+                instance. Passing a distinct offset per worker (e.g. its rank)
+                gives each one an independent per-episode sampling stream (see
+                `_sampling_rng` below), so parallel workers explore genuinely
+                different seeds instead of following the same sequence in
+                lockstep. Defaults to 0 for single-environment usage
+                (eval.py, visual_eval.py), where this has no effect anyway.
         """
 
         # Introducing difficulty levels for the learning curriculum
         self.difficulty = difficulty
         
+        # Governs POOL CONSTRUCTION only (which seeds make it into the 40%/60%
+        # training subset, and their permutation order) -- kept at a FIXED
+        # seed regardless of worker_seed_offset so every parallel worker
+        # agrees on the exact same pool definition. Do not use this for
+        # anything drawn repeatedly during training (see _sampling_rng).
         self._episode_rng = np.random.default_rng(99999)
 
 
@@ -64,6 +78,25 @@ class NanoEnv(gym.Env):
         self._easy_perm = [self.__easy_seeds[i] for i in self._episode_rng.permutation(len(self.__easy_seeds))]
         self._medium_perm = [self.__medium_seeds[i] for i in self._episode_rng.permutation(len(self.__medium_seeds))]
         self._hard_perm = [self.__hard_seeds[i] for i in self._episode_rng.permutation(len(self.__hard_seeds))]
+
+        # Governs WHICH seed gets drawn each episode (and the 20/80, 10/20/70
+        # curriculum-mixing coin flips) -- unlike _episode_rng above, this IS
+        # meant to differ per worker (via worker_seed_offset), so that
+        # parallel SubprocVecEnv workers explore genuinely different episodes
+        # instead of following the identical draw sequence in lockstep (which
+        # happened before, since every worker used to share the same fixed
+        # _episode_rng seed for this too). Still fully deterministic and
+        # reproducible for a given worker_seed_offset.
+        self._sampling_rng = np.random.default_rng(13579 + worker_seed_offset)
+
+        # Tracks how many times each individual seed has actually been drawn
+        # during training, per pool ({"easy": {seed: count}, ...}). This gives
+        # real visibility into training coverage (e.g. "92% of the easy pool
+        # has been seen at least once by step 8M"), independent of raw
+        # timestep count. A dict is used (not a boolean set) so we also know
+        # HOW MANY times each seed was revisited, not just whether it was seen.
+        # Memory cost is negligible: a few thousand int keys per pool at most.
+        self._seed_counts = {"easy": {}, "medium": {}, "hard": {}}
 
 
         # Load topology cache if available
@@ -373,10 +406,12 @@ class NanoEnv(gym.Env):
         k = self._pool_init * (2 ** steps)
         return int(min(max_len, max(1, k)))
     
-    def _sample_from(self, seeds, k: int):
+    def _sample_from(self, seeds, k: int, category: str):
         # pool = k first seeds
         pool = seeds[:k]
-        return pool[self._episode_rng.integers(0, len(pool))]
+        seed = pool[self._sampling_rng.integers(0, len(pool))]
+        self._seed_counts[category][seed] = self._seed_counts[category].get(seed, 0) + 1
+        return seed
 
     def _get_seed(self):
         """Generates a seed for the episode depending on the difficulty level chosen"""
@@ -388,26 +423,44 @@ class NanoEnv(gym.Env):
 
         if self.difficulty == "easy":
             print("pool_size_easy: ", ke)
-            return self._sample_from(self._easy_perm, ke)
+            return self._sample_from(self._easy_perm, ke, "easy")
 
         if self.difficulty == "medium":
             print("pool_size_easy: ", ke, ", pool_size_medium: ", km)
             # 20% easy, 80% medium 
-            if self._episode_rng.uniform(0.0, 1.0) < 0.2:
-                return self._sample_from(self._easy_perm, ke)
-            return self._sample_from(self._medium_perm, km)
+            if self._sampling_rng.uniform(0.0, 1.0) < 0.2:
+                return self._sample_from(self._easy_perm, ke, "easy")
+            return self._sample_from(self._medium_perm, km, "medium")
 
         if self.difficulty == "hard":
             print("pool_size_easy: ", ke, ", pool_size_medium: ", km, ", pool_size_hard: ", kh)
             # 10% easy, 20% medium, 70% hard
-            u = self._episode_rng.uniform(0.0, 1.0)
+            u = self._sampling_rng.uniform(0.0, 1.0)
             if u < 0.1:
-                return self._sample_from(self._easy_perm, ke)
+                return self._sample_from(self._easy_perm, ke, "easy")
             if u < 0.3:
-                return self._sample_from(self._medium_perm, km)
-            return self._sample_from(self._hard_perm, kh)
+                return self._sample_from(self._medium_perm, km, "medium")
+            return self._sample_from(self._hard_perm, kh, "hard")
 
-        return int(self._episode_rng.integers(0, 10000))
+        return int(self._sampling_rng.integers(0, 10000))
+
+    def get_seed_visit_counts(self):
+        """Returns {"easy": {seed: times_drawn}, "medium": {...}, "hard": {...}}
+        for THIS environment instance since it was created. Meant to be called
+        via VecEnv.env_method() from a training callback, then aggregated
+        across all parallel sub-environments (see seed_coverage_callback.py)."""
+        return self._seed_counts
+
+    def get_training_pool_sizes(self):
+        """Returns the number of seeds in each training pool (identical across
+        every sub-environment, since all are built from the same seeds.json
+        with the same fixed _episode_rng seed) -- used as the denominator for
+        coverage percentages."""
+        return {
+            "easy":   len(self.__easy_seeds),
+            "medium": len(self.__medium_seeds),
+            "hard":   len(self.__hard_seeds),
+        }
 
     
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):

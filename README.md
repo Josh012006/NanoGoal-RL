@@ -407,7 +407,7 @@ This time I tested **Middle schooler Billy** on easy and hard tests sets too. We
 <br />
 
 ### Hard mode training
-For the last one I added **300,000,000 timesteps**. Hard worlds require the agent to combine everything it has learned — navigating around multiple significant obstacles (> 270° total angular deviation) while maintaining directional progress toward a distant goal.
+For the last step, I added **400,000,000 timesteps** (~13 days). Hard worlds require the agent to combine everything it has learned — navigating around multiple significant obstacles (> 270° total angular deviation) while maintaining directional progress toward a distant goal.
 
 <p align="center">
   <img src="public/hard/reward_mean.png" width="800" alt="the reward mean during learning"><br>

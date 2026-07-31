@@ -14,15 +14,24 @@ torch.set_num_threads(1)
 import env
 
 from stable_baselines3.common.env_checker import check_env
-from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import SubprocVecEnv
+from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import CallbackList
 from stable_baselines3 import PPO
 from checkpoint_callback import KeepLastTwoCheckpoints
+from seed_coverage_callback import SeedCoverageCallback
 
 
-def make_env():
-    return env.NanoEnv(difficulty="easy")
+def make_env(worker_idx):
+    # worker_idx gives each parallel SubprocVecEnv worker a distinct
+    # per-episode sampling stream (see env.py's worker_seed_offset), so
+    # parallel workers explore genuinely different seeds instead of following
+    # the same draw sequence in lockstep. Monitor is added manually here
+    # (make_vec_env normally does this for us) since we build SubprocVecEnv
+    # directly to be able to pass a different worker_idx to each instance.
+    def _init():
+        return Monitor(env.NanoEnv(difficulty="easy", worker_seed_offset=worker_idx))
+    return _init
 
 
 if __name__ == "__main__":
@@ -35,11 +44,7 @@ if __name__ == "__main__":
     print(f"Running with {n_envs} parallel environments ({n_steps} steps each)")
 
     # SubprocVecEnv spawns one process per env, enabling true CPU parallelism
-    vec_env = make_vec_env(
-        make_env,
-        n_envs=n_envs,
-        vec_env_cls=SubprocVecEnv
-    )
+    vec_env = SubprocVecEnv([make_env(i) for i in range(n_envs)])
 
     # Use RUN_ID from environment for unique checkpoint folder per run
     run_id = os.environ.get("RUN_ID", "local")
@@ -50,6 +55,15 @@ if __name__ == "__main__":
         save_freq=1_000_000,
         save_path=checkpoint_path,
         name_prefix="ppo_easy"
+    )
+
+    # Tracks real per-seed training coverage (how many individual seeds from
+    # each pool have actually been visited, and how often) — logged every
+    # 100,000 timesteps to TensorBoard/WandB, with a final histogram per pool
+    # saved to plots/easy/ once training ends.
+    seed_coverage_callback = SeedCoverageCallback(
+        log_freq=100_000,
+        output_dir="plots/easy"
     )
 
     # ── Optional Weights & Biases logging ─────────────────────────────────────
@@ -78,7 +92,7 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"wandb unavailable, continuing with TensorBoard only: {e}")
 
-    callbacks = [checkpoint_callback]
+    callbacks = [checkpoint_callback, seed_coverage_callback]
     if wandb_callback is not None:
         callbacks.append(wandb_callback)
 
