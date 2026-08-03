@@ -1,21 +1,80 @@
 # The agent's behavior over different difficulty levels
-<p align="center">
-  <img src="public/easy/demo_easy.gif" alt="Demo">
-  <br>
-  <em>Demonstration of an easy level using a model trained for the easy mode.</em>
-</p>
 
-<p align="center">
-  <img src="public/medium/demo_medium.gif" alt="Demo">
-  <br>
-  <em>Demonstration of a medium level using a model trained for the medium mode.</em>
-</p>
+### Behavior of the model trained for easy mode
 
-<p align="center">
-  <img src="public/hard/demo_hard.gif" alt="Demo">
-  <br>
-  <em>Demonstration of a hard level using a model trained for the hard mode.</em>
-</p>
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="public/easy/demo_easy_easy.gif" alt="Demo">
+      <br>
+      <em>Behavior on an easy level world using the model trained for the easy mode.</em>
+    </td>
+    <td align="center">
+      <img src="public/easy/demo_easy_medium.gif" alt="Demo">
+      <br>
+      <em>Behavior on a medium level world using the model trained for the easy mode.</em>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2">
+      <img src="public/easy/demo_easy_hard.gif" alt="Demo">
+      <br>
+      <em>Behavior on a hard level world using the model trained for the easy mode.</em>
+    </td>
+  </tr>
+</table>
+
+<br>
+
+### Behavior of the model trained for medium mode
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="public/medium/demo_medium_easy.gif" alt="Demo">
+      <br>
+      <em>Behavior on an easy level world using the model trained for the medium mode.</em>
+    </td>
+    <td align="center">
+      <img src="public/medium/demo_medium_medium.gif" alt="Demo">
+      <br>
+      <em>Behavior on a medium level world using the model trained for the medium mode.</em>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2">
+      <img src="public/medium/demo_medium_hard.gif" alt="Demo">
+      <br>
+      <em>Behavior on a hard level world using the model trained for the medium mode.</em>
+    </td>
+  </tr>
+</table>
+
+<br>
+
+### Behavior of the model trained for hard mode
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="public/hard/demo_hard_easy.gif" alt="Demo">
+      <br>
+      <em>Behavior on an easy level world using the model trained for the hard mode.</em>
+    </td>
+    <td align="center">
+      <img src="public/hard/demo_hard_medium.gif" alt="Demo">
+      <br>
+      <em>Behavior on a medium level world using the model trained for the hard mode.</em>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2">
+      <img src="public/hard/demo_hard_hard.gif" alt="Demo">
+      <br>
+      <em>Behavior on a hard level world using the model trained for the hard mode.</em>
+    </td>
+  </tr>
+</table>
 
 
 # NanoGoal-RL
@@ -58,11 +117,22 @@ Key ideas explored:
   - Nanorobot out of the bounds of the environment
   - Maximum number of steps exceeded
 
-## Methods
+## Methods and References
 
 The agent is trained using Proximal Policy Optimization (PPO).
 
 The implementation relies on standard RL libraries to ensure reproducibility and clarity.
+
+
+Key papers this project builds on — read before implementing the
+corresponding phase.
+
+- [x] Schulman, J., Wolski, F., Dhariwal, P., Radford, A., & Klimov, O. (2017).
+  *Proximal Policy Optimization Algorithms*. arXiv.
+  [PDF](https://arxiv.org/pdf/1707.06347.pdf)
+  Core policy optimization method — introduces PPO, a stable and sample-efficient
+  policy gradient algorithm using a clipped surrogate objective to limit destructive
+  policy updates.
 
 ## Technologies Used
 
