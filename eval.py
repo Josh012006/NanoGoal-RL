@@ -52,9 +52,9 @@ def _sample_category(seeds_list, pct=0.40):
     idx = _loader_rng.choice(len(arr), size=k, replace=False)
     return set(arr[idx].tolist())
 
-train_easy   = _sample_category(_all_seeds["easy"])
-train_medium = _sample_category(_all_seeds["medium"])
-train_hard   = _sample_category(_all_seeds["hard"])
+train_easy   = _sample_category(_all_seeds["easy"], pct=0.40)
+train_medium = _sample_category(_all_seeds["medium"], pct=0.60)
+train_hard   = _sample_category(_all_seeds["hard"], pct=0.60)
 
 # ── Test sets = seeds classified NOT used during training ──────────────
 _test_rng = np.random.default_rng(77777)
