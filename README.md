@@ -184,6 +184,7 @@ Even with all of this, v2's final model showed a real limitation on hard difficu
 - **`eval.py`/`visual_eval.py` now manage the LSTM's hidden state explicitly**: reset at the start of every episode, carried across steps within it — required by `RecurrentPPO`, meaningless for plain `PPO`.
 - **Refactored `saving_plots.py`'s CLI**: replaced positional numeric arguments (`0`/`1`/`2` for difficulty, a raw `0`/`1` flag) with named `--model`/`--seed` options mirroring `eval.py`/`visual_eval.py`'s own convention, removing an entire class of hard-to-read, easy-to-mis-order invocations.
 - **Reworked the seed-coverage metrics**: `SeedCoverageCallback` no longer logs the raw `unique_seen` seed count (kept only the normalized `pct_unique_seen`), and now also logs a live per-category `success_rate` — the fraction of episodes on already-seen easy/medium/hard seeds that ended in success — giving more direct visibility into curriculum progress than seed coverage alone.
+- **Pinned `numpy` to `2.4.1` instead of `2.4.0`**: `2.4.0` was yanked from PyPI shortly after release over a backward-compatibility bug (a typo in `SeedlessSequence` breaking wheels built against `numpy < 2.4.0` via the `random` Cython API), which pip surfaces as an install-time warning. `2.4.1` is the immediate patch release that fixes exactly that bug and nothing else.
 
 ## Training Hyperparameters
 
@@ -196,7 +197,7 @@ The table below reflects the `RecurrentPPO` configuration set in `train_easy.py`
 | `batch_size` | 200 | 200 (inherited, not overridden) | 200 (inherited, not overridden) |
 | `n_epochs` | 10 | 15 | 20 |
 | `learning_rate` | 3e-4 (default) | 1e-4 | 5e-5 |
-| `total_timesteps` | 12,000,000 | 200,000,000 | 400,000,000 |
+| `total_timesteps` | 20,000,000 | 200,000,000 | 400,000,000 |
 | `device` | `cpu` | `cpu` | `cpu` |
 | `lstm_hidden_size` | 256 (default) | 256 (inherited) | 256 (inherited) |
 | `n_lstm_layers` | 1 (default) | 1 (inherited) | 1 (inherited) |
