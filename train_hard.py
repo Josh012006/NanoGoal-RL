@@ -16,7 +16,7 @@ import env
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import CallbackList
-from stable_baselines3 import PPO
+from sb3_contrib import RecurrentPPO
 from checkpoint_callback import KeepLastTwoCheckpoints
 from seed_coverage_callback import SeedCoverageCallback
 
@@ -92,9 +92,14 @@ if __name__ == "__main__":
     if wandb_callback is not None:
         callbacks.append(wandb_callback)
 
+    # v3: RecurrentPPO/MultiInputLstmPolicy instead of plain PPO (see
+    # train_easy.py for the full rationale) -- this is the actual fix being
+    # tried for the hard-mode plateau/regression documented in the README's
+    # "Final analysis". Same architecture-compatibility note as train_medium.py:
+    # models/ppo_lstm_medium must already be a RecurrentPPO checkpoint.
     # n_epochs=20 — maximum reuse per rollout for complex multi-detour navigation
-    model = PPO.load(
-        "models/ppo_nanogoal_medium",
+    model = RecurrentPPO.load(
+        "models/ppo_lstm_medium",
         env=vec_env,
         custom_objects={"n_steps": n_steps, "learning_rate": 5e-5, "n_epochs": 20},
         device="cpu"  # avoid CPU/GPU non-determinism: never auto-select CUDA
@@ -107,7 +112,7 @@ if __name__ == "__main__":
         callback=CallbackList(callbacks)
     )
 
-    model.save("models/ppo_nanogoal_hard")
+    model.save("models/ppo_lstm_hard")
 
     if wandb_run is not None:
         wandb_run.finish()

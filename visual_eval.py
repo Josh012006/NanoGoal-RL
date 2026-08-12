@@ -19,7 +19,7 @@ import torch
 torch.set_num_threads(1)
 
 import env
-from stable_baselines3 import PPO
+from sb3_contrib import RecurrentPPO
 from PIL import Image
 from pathlib import Path
 
@@ -56,9 +56,9 @@ if args.seed is None and args.seed_value is None:
     parser.error("Provide either --seed <easy|medium|hard> or --seed_value <int>.")
 
 models = {
-    "easy":   "ppo_nanogoal_easy",
-    "medium": "ppo_nanogoal_medium",
-    "hard":   "ppo_nanogoal_hard",
+    "easy":   "ppo_lstm_easy",
+    "medium": "ppo_lstm_medium",
+    "hard":   "ppo_lstm_hard",
 }
 default_seeds = {
     "easy":   1520,
@@ -73,11 +73,17 @@ VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
 output_path = args.output or str(VIDEOS_DIR / f"visual_eval_{args.model}_{chosen_seed}.gif")
 
 myEnv = env.NanoEnv(render_mode="human")
-model = PPO.load("models/" + models[args.model], env=myEnv, device="cpu")  # avoid CPU/GPU non-determinism
+model = RecurrentPPO.load("models/" + models[args.model], env=myEnv, device="cpu")  # avoid CPU/GPU non-determinism
 
 # Reset environment to start a new episode
 observation, info = myEnv.reset(seed=chosen_seed)
 frames = [myEnv._last_frame]
+
+# RecurrentPPO's LSTM hidden/cell state -- reset once here (state=None,
+# episode_start=True) for this single episode and carried across every
+# step below (see eval.py for the full rationale).
+lstm_states = None
+episode_starts = np.ones((1,), dtype=bool)
 
 print(f"Using seed: {chosen_seed}")
 print(f"Starting observation: {observation}")
@@ -105,7 +111,10 @@ def save_gif():
 
 try:
     while not episode_over:
-        action, _ = model.predict(observation, deterministic=True)
+        action, lstm_states = model.predict(
+            observation, state=lstm_states, episode_start=episode_starts, deterministic=True
+        )
+        episode_starts = np.zeros((1,), dtype=bool)
 
         observation, reward, terminated, truncated, info = myEnv.step(action)
         frames.append(myEnv._last_frame)

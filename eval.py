@@ -15,7 +15,7 @@ torch.set_num_threads(1)
 
 import json
 import env
-from stable_baselines3 import PPO
+from sb3_contrib import RecurrentPPO
 import csv
 from pathlib import Path
 import numpy as np
@@ -86,7 +86,7 @@ _shuffle_rng = np.random.default_rng(24680)
 test_set = _shuffle_rng.permutation(test_sets[seed_mode])
 
 myEnv = env.NanoEnv()
-model = PPO.load("models/ppo_nanogoal_" + model_difficulty, env=myEnv, device="cpu")  # avoid CPU/GPU non-determinism
+model = RecurrentPPO.load("models/ppo_lstm_" + model_difficulty, env=myEnv, device="cpu")  # avoid CPU/GPU non-determinism
 
 
 folder = model_difficulty
@@ -101,14 +101,26 @@ with open("results/" + folder + "/ppo_eval_" + seed_mode + ".csv", "w", newline=
         terminated = False
         truncated = False
 
+        # RecurrentPPO carries an LSTM hidden/cell state across steps within
+        # an episode. It must be reset (state=None, episode_start=True) at
+        # the start of EVERY new test episode here -- otherwise the policy
+        # would keep "remembering" the previous episode's trajectory (a
+        # different seed, different world) into the next one instead of
+        # starting fresh, silently corrupting the evaluation.
+        lstm_states = None
+        episode_starts = np.ones((1,), dtype=bool)
+
         total_reward = 0
         step = 0
         init_dist = info["distance"]
 
         # Run the episode
         while not (terminated or truncated):
-            action, _ = model.predict(obs, deterministic=True)
+            action, lstm_states = model.predict(
+                obs, state=lstm_states, episode_start=episode_starts, deterministic=True
+            )
             obs, reward, terminated, truncated, info = myEnv.step(action)
+            episode_starts = np.zeros((1,), dtype=bool)
 
             total_reward += reward
             step += 1

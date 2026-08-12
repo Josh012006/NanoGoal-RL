@@ -16,7 +16,7 @@ import env
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import CallbackList
-from stable_baselines3 import PPO
+from sb3_contrib import RecurrentPPO
 from checkpoint_callback import KeepLastTwoCheckpoints
 from seed_coverage_callback import SeedCoverageCallback
 
@@ -92,9 +92,15 @@ if __name__ == "__main__":
     if wandb_callback is not None:
         callbacks.append(wandb_callback)
 
+    # v3: RecurrentPPO/MultiInputLstmPolicy instead of plain PPO (see
+    # train_easy.py for the full rationale). IMPORTANT: this .load() requires
+    # models/ppo_lstm_easy to itself already be a RecurrentPPO checkpoint
+    # produced by the new train_easy.py -- a v2-era plain-PPO checkpoint has
+    # no LSTM weights and will fail to load here (architecture mismatch), so
+    # easy must be retrained from scratch once before medium can chain off it.
     # n_epochs=15 — more passes per rollout to extract more signal from complex episodes
-    model = PPO.load(
-        "models/ppo_nanogoal_easy",
+    model = RecurrentPPO.load(
+        "models/ppo_lstm_easy",
         env=vec_env,
         custom_objects={"n_steps": n_steps, "learning_rate": 1e-4, "n_epochs": 15},
         device="cpu"  # avoid CPU/GPU non-determinism: never auto-select CUDA
@@ -107,7 +113,7 @@ if __name__ == "__main__":
         callback=CallbackList(callbacks)
     )
 
-    model.save("models/ppo_nanogoal_medium")
+    model.save("models/ppo_lstm_medium")
 
     if wandb_run is not None:
         wandb_run.finish()

@@ -17,7 +17,7 @@ from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import CallbackList
-from stable_baselines3 import PPO
+from sb3_contrib import RecurrentPPO
 from checkpoint_callback import KeepLastTwoCheckpoints
 from seed_coverage_callback import SeedCoverageCallback
 
@@ -97,9 +97,22 @@ if __name__ == "__main__":
         callbacks.append(wandb_callback)
 
     # Define and train the agent
+    # v3: switched from PPO/MultiInputPolicy to RecurrentPPO/MultiInputLstmPolicy
+    # (sb3-contrib). The README's "Final analysis" of the v2 hard-mode results
+    # showed the agent repeatedly forgetting it was mid-detour and drifting
+    # back into the same wall -- a memorylessness problem that a feedforward
+    # policy structurally cannot fix, since it only ever sees the CURRENT
+    # observation. Adding an LSTM (see Hausknecht & Stone, 2015, DRQN, in the
+    # README) gives the policy a hidden state that persists across timesteps
+    # within an episode, so it can carry information like "I'm currently
+    # escaping a wall" forward instead of re-deciding from scratch every step.
+    # policy_kwargs is left at sb3-contrib's defaults here (lstm_hidden_size=256,
+    # n_lstm_layers=1, shared_lstm=False, enable_critic_lstm=True) -- see the
+    # discussion of alternatives (hidden size, shared vs separate actor/critic
+    # LSTM) before committing to this for the full curriculum.
     # n_epochs=10 (default) — learns quickly on fresh data
-    model = PPO(
-        "MultiInputPolicy",
+    model = RecurrentPPO(
+        "MultiInputLstmPolicy",
         env=vec_env,
         verbose=1,
         tensorboard_log="./logs/",
@@ -116,7 +129,7 @@ if __name__ == "__main__":
     )
 
     # Save the trained agent
-    model.save("models/ppo_nanogoal_easy")
+    model.save("models/ppo_lstm_easy")
 
     if wandb_run is not None:
         wandb_run.finish()
