@@ -101,7 +101,7 @@ if __name__ == "__main__":
     )
 
     model.learn(
-        total_timesteps=150_000_000,
+        total_timesteps=200_000_000,
         reset_num_timesteps=False,
         tb_log_name="medium",
         callback=CallbackList(callbacks)
