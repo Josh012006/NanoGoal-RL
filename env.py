@@ -117,8 +117,8 @@ class NanoEnv(gym.Env):
         self._vessel_topology = np.zeros(shape=(self._size, self._size), dtype=int) # the vessels layout as a grid with 0 being the empty spaces and 1 being occupied ones by walls
 
         # Lidar (raycasts) parameters
-        self._lidar_n = 8
-        self._lidar_max_range = 20.0  
+        self._lidar_n = 16
+        self._lidar_max_range = 60.0  
         self._lidar_step = 0.25        
 
         # Entities characteristics
