@@ -141,9 +141,9 @@ if [ "$TRAIN_EASY" = "true" ]; then
     $VENV/python eval.py --model easy --seed easy   >> logs/train_easy.log 2>&1
     $VENV/python eval.py --model easy --seed medium >> logs/train_easy.log 2>&1
     $VENV/python eval.py --model easy --seed hard   >> logs/train_easy.log 2>&1
-    $VENV/python saving_plots.py results/easy/ppo_eval_easy.csv   plots/easy 0   >> logs/train_easy.log 2>&1
-    $VENV/python saving_plots.py results/easy/ppo_eval_medium.csv plots/easy 1 0 >> logs/train_easy.log 2>&1
-    $VENV/python saving_plots.py results/easy/ppo_eval_hard.csv   plots/easy 2 0 >> logs/train_easy.log 2>&1
+    $VENV/python saving_plots.py --model easy --seed easy   >> logs/train_easy.log 2>&1
+    $VENV/python saving_plots.py --model easy --seed medium >> logs/train_easy.log 2>&1
+    $VENV/python saving_plots.py --model easy --seed hard   >> logs/train_easy.log 2>&1
     touch logs/train_easy.DONE
     send_email "✅ NanoGoal — easy training complete" "Easy training finished successfully.\nRun ID: $RUN_ID\nCommit: $SHA"
     log "Easy eval and plots done."
@@ -167,9 +167,9 @@ if [ "$TRAIN_MEDIUM" = "true" ] && [ "${TRAINING_FAILED:-false}" = "false" ]; th
     $VENV/python eval.py --model medium --seed easy   >> logs/train_medium.log 2>&1
     $VENV/python eval.py --model medium --seed medium >> logs/train_medium.log 2>&1
     $VENV/python eval.py --model medium --seed hard   >> logs/train_medium.log 2>&1
-    $VENV/python saving_plots.py results/medium/ppo_eval_easy.csv   plots/medium 0 0 >> logs/train_medium.log 2>&1
-    $VENV/python saving_plots.py results/medium/ppo_eval_medium.csv plots/medium 1   >> logs/train_medium.log 2>&1
-    $VENV/python saving_plots.py results/medium/ppo_eval_hard.csv   plots/medium 2 0 >> logs/train_medium.log 2>&1
+    $VENV/python saving_plots.py --model medium --seed easy   >> logs/train_medium.log 2>&1
+    $VENV/python saving_plots.py --model medium --seed medium >> logs/train_medium.log 2>&1
+    $VENV/python saving_plots.py --model medium --seed hard   >> logs/train_medium.log 2>&1
     touch logs/train_medium.DONE
     send_email "✅ NanoGoal — medium training complete" "Medium training finished successfully.\nRun ID: $RUN_ID\nCommit: $SHA"
     log "Medium eval and plots done."
@@ -193,9 +193,9 @@ if [ "$TRAIN_HARD" = "true" ] && [ "${TRAINING_FAILED:-false}" = "false" ]; then
     $VENV/python eval.py --model hard --seed easy   >> logs/train_hard.log 2>&1
     $VENV/python eval.py --model hard --seed medium >> logs/train_hard.log 2>&1
     $VENV/python eval.py --model hard --seed hard   >> logs/train_hard.log 2>&1
-    $VENV/python saving_plots.py results/hard/ppo_eval_easy.csv   plots/hard 0 0 >> logs/train_hard.log 2>&1
-    $VENV/python saving_plots.py results/hard/ppo_eval_medium.csv plots/hard 1 0 >> logs/train_hard.log 2>&1
-    $VENV/python saving_plots.py results/hard/ppo_eval_hard.csv   plots/hard 2   >> logs/train_hard.log 2>&1
+    $VENV/python saving_plots.py --model hard --seed easy   >> logs/train_hard.log 2>&1
+    $VENV/python saving_plots.py --model hard --seed medium >> logs/train_hard.log 2>&1
+    $VENV/python saving_plots.py --model hard --seed hard   >> logs/train_hard.log 2>&1
     touch logs/train_hard.DONE
     send_email "✅ NanoGoal — hard training complete" "Hard training finished successfully.\nRun ID: $RUN_ID\nCommit: $SHA"
     log "Hard eval and plots done."

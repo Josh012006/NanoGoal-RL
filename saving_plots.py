@@ -2,23 +2,50 @@
 # view of the plots, they are automatically saved in the appropriate way.
 # Was reviewed with CHATGPT and CLAUDE.
 
+import argparse
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import sys
 from pathlib import Path
 
+DIFFICULTIES = ["easy", "medium", "hard"]
+SEED_MODES   = ["easy", "medium", "hard", "mix"]
 
-if len(sys.argv) < 4:
-    raise ValueError("Some arguments are missing!")
+parser = argparse.ArgumentParser(
+    description="Generate and save evaluation plots for a trained PPO model's "
+                "results CSV (see eval.py), without popping up an interactive window."
+)
+parser.add_argument(
+    "--model", required=True, choices=DIFFICULTIES,
+    help="Difficulty the model was trained for."
+)
+parser.add_argument(
+    "--seed", required=True, choices=SEED_MODES,
+    help="Difficulty of the world seeds the model was evaluated on ('mix' combines all three)."
+)
+parser.add_argument(
+    "--csv", required=False, default=None,
+    help="Path to the evaluation CSV. Defaults to results/<model>/ppo_eval_<seed>.csv, "
+         "matching eval.py's own output path convention."
+)
+parser.add_argument(
+    "--output-folder", required=False, default=None,
+    help="Folder to save the plots to. Defaults to plots/<model>."
+)
+args = parser.parse_args()
 
-CSV_PATH     = sys.argv[1]
-OUTPUT_FOLDER = sys.argv[2]
-MODE         = int(sys.argv[3])  # 0, 1 or 2 for easy, medium and hard respectively
-TEXT_MODE    = "easy" if MODE == 0 else "medium" if MODE == 1 else "hard"
+CSV_PATH      = args.csv or f"results/{args.model}/ppo_eval_{args.seed}.csv"
+OUTPUT_FOLDER = args.output_folder or f"plots/{args.model}"
+TEXT_MODE     = args.seed
 
-# Tells if the mode difficulty is the same as the model used — optional, default True
-SAME_MODEL = True if len(sys.argv) == 4 else bool(int(sys.argv[4]))
+# True exactly when the CSV is the model's "native" evaluation (world seeds of
+# the same difficulty it was trained for) rather than a cross-difficulty test.
+# Only native evaluations get the extra per-model diagnostic plots below
+# (termination breakdown, episode length, regret) -- cross-evaluations (e.g.
+# the easy model tested on hard seeds) only get the return/success/distance
+# plots. Derived from --model/--seed instead of a hand-passed 0/1 flag, so
+# there's no longer a raw boolean to mis-parse.
+SAME_MODEL = args.model == args.seed
 
 # ---------- load ----------
 df = pd.read_csv(CSV_PATH)

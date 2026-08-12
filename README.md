@@ -686,7 +686,7 @@ tensorboard --logdir logs/<hard_logs_folder>
 
 <br />
 
-Test a trained model over 100 episodes:
+Test a trained model over 500 episodes:
 ```bash
 python eval.py --model {easy,medium,hard} --seed {easy,medium,hard,mix}
 ```
@@ -695,10 +695,22 @@ where :
 - `--seed` : difficulty of the world seeds to test on (`mix` combines all three categories)
 The results will appear as CSV files in the results folder.
 
-Vizualize trajectories concerning the performances for the 100 test episodes:
+Vizualize trajectories concerning the performances for the 500 test episodes:
 ```bash
 python plots.py <csv_file_path>
 ```
+
+<br />
+
+Save the same plots to disk instead of popping up an interactive window (used automatically by the CI training pipeline after each `eval.py` run):
+```bash
+python saving_plots.py --model {easy,medium,hard} --seed {easy,medium,hard,mix}
+```
+where :
+- `--model` : difficulty the model was trained for
+- `--seed` : difficulty of the world seeds the model was evaluated on (`mix` combines all three)
+
+By default this reads `results/<model>/ppo_eval_<seed>.csv` (matching `eval.py`'s own output path) and saves plots to `plots/<model>/`. Both can be overridden with `--csv <path>` and `--output-folder <path>` if needed. When `--model` and `--seed` match (the model's "native" evaluation), a few extra diagnostic plots are also generated (termination breakdown, episode length, regret) in addition to the return/success/distance plots shared by every evaluation.
 
 <br />
 
