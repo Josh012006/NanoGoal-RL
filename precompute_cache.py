@@ -1,0 +1,106 @@
+# precompute_cache.py
+# Run this script once after classify_seeds.py:
+#   python precompute_cache.py
+# It generates topology_cache (shelve files) containing for each seed:
+#   - the topology (np.ndarray of shape (125, 125))
+#   - the filtered available space (np.ndarray of shape (N, 2))
+
+import json
+import os
+import shelve
+import numpy as np
+import env as E
+from utils import main_related_component
+
+
+def precompute(seed: int, environment: E.NanoEnv):
+    """
+    Reproduce exactly the world generation phase from reset(),
+    without placing the agent or the target — just the topology and free space.
+
+    new_seed starts at seed+1 and increments until it finds
+    a topology with enough available space (> 100 cells).
+    """
+    new_seed = 1 + int(seed)
+    while True:
+        topology  = environment._generate_logical_topology(new_seed)
+        # CRITICAL: _filter_by_clearance() internally checks walls via
+        # self._vessel_topology (not a parameter it's passed!). Without this
+        # assignment, clearance was being checked against whatever topology
+        # happened to be left over on `environment` (all-zeros / no walls at
+        # all for a fresh instance), not the topology just generated above.
+        # This silently produced a WRONG available_space for every single
+        # cached seed -- different length and content than a correct fresh
+        # computation -- which cascaded into completely different agent/
+        # target placements for any seed served from this cache, compared to
+        # env.py's own (correct) fallback path. This one-line fix makes the
+        # cache match env.py's reset() logic exactly.
+        environment._vessel_topology = topology
+        available = main_related_component(topology)
+        available = environment._filter_by_clearance(
+            available,
+            max(environment._agent_radius, environment._target_radius)
+        )
+        new_seed += 1
+        if len(available) > 100:
+            # Stack the list of np.array([i, j]) into a single (N, 2) array
+            # instead of storing thousands of individual np.arrays — drastically
+            # reduces serialization overhead and final file size
+            available_arr = np.stack(available, axis=0).astype(np.float32)
+            return topology, available_arr
+
+
+if __name__ == "__main__":
+    import glob
+
+    # Always start from a completely blank cache file. shelve.open("topology_cache")
+    # with the default mode only ADDS/UPDATES keys on top of whatever is already on
+    # disk -- it never wipes the file. If a previous run of this script (or of
+    # anything else that opened the file for writing) was ever killed mid-write
+    # (this has happened before: a GDBM lock error, apt-daily-upgrade killing
+    # processes, a full disk), the underlying file can be left with residual
+    # corruption that silently survives every subsequent "regeneration", since
+    # regeneration never actually starts from a clean slate. Deleting the files
+    # up front guarantees this cache is always built fresh, with zero chance of
+    # inheriting corruption from an unrelated past crash.
+    for f in glob.glob("topology_cache*"):
+        os.remove(f)
+        print(f"Removed pre-existing cache file: {f}")
+
+    with open("seeds.json") as f:
+        all_seeds = json.load(f)
+
+    all_training_seeds = (
+        all_seeds["easy"] + all_seeds["medium"] + all_seeds["hard"]
+    )
+
+    environment = E.NanoEnv()
+
+    # NanoEnv's constructor opens topology_cache in read-only mode if the file
+    # already exists (this is what training/eval rely on). During a regeneration
+    # (generate_cache=true), that lingering read-only handle would block the
+    # write-mode shelve.open() below — GDBM refuses a second handle on the same
+    # file while another is open, raising "Resource temporarily unavailable".
+    # We don't need that handle here since we're about to rebuild the cache
+    # from scratch, so close it immediately.
+    if hasattr(environment._topology_cache, "close"):
+        environment._topology_cache.close()
+
+    print(f"Precomputing {len(all_training_seeds)} seeds...")
+
+    # shelve writes each entry directly to disk — no MemoryError on large datasets
+    with shelve.open("topology_cache") as cache:
+        for i, seed in enumerate(all_training_seeds):
+            topology, available_arr = precompute(seed, environment)
+
+            # shelve requires string keys
+            cache[str(seed)] = {
+                "topology":  topology,       # np.ndarray (125, 125)
+                "available": available_arr,  # np.ndarray (N, 2) — compact
+            }
+
+            if (i + 1) % 100 == 0:
+                print(f"  {i + 1}/{len(all_training_seeds)}")
+
+    environment.close()
+    print(f"topology_cache generated ({len(all_training_seeds)} entries).")
