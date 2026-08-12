@@ -95,6 +95,8 @@ Key ideas explored:
 - Continuous control
 - Autonomous decision-making
 - Simulation-based robotics
+- Partially observable Markov decision processes (POMDPs) — the agent never sees the full world, only a local lidar reading and its position relative to the goal
+- Memory-augmented policies — giving the agent a recurrent hidden state so it can remember what it was doing (e.g. mid-detour around a wall) instead of reacting only to the current observation
 
 ## Environment
 
@@ -102,7 +104,7 @@ Key ideas explored:
   - Robot position `(x, y)`
   - Distance to goal `(x_delta_goal, y_delta_goal)`
   - Velocity and orientation relative to the $x$-axis `(v, theta)`
-  - Distance to walls in 8 directions from agent
+  - Distance to walls in 16 directions from agent
 - Action space:
   - Changes to the orientation `dtheta`
   - Variation to the velocity `dv`
@@ -119,7 +121,7 @@ Key ideas explored:
 
 ## Methods and References
 
-The agent is trained using Proximal Policy Optimization (PPO).
+As of v3, the agent is trained using Recurrent Proximal Policy Optimization (RecurrentPPO), via the `sb3-contrib` library. This is standard PPO with an LSTM (Long Short-Term Memory) layer added inside the policy and value networks, giving the agent a hidden state that persists across timesteps within an episode. Instead of reacting only to the current observation, the agent can now carry information forward — such as "I am currently escaping a wall" — which earlier versions of the project (plain PPO, purely feedforward) had no way to represent.
 
 The implementation relies on standard RL libraries to ensure reproducibility and clarity.
 
@@ -145,6 +147,7 @@ corresponding phase.
 - NumPy
 - Gymnasium
 - Stable-Baselines3
+- SB3-Contrib
 - TensorBoard
 - Matplotlib
 - Pandas
@@ -158,47 +161,53 @@ corresponding phase.
 - **Storage**: 80 GiB (DigitalOcean droplet) / separate OS disk + 128 GiB data disk (Azure)
 - **OS**: Ubuntu Server 24.04 LTS
 
+Despite the move to RecurrentPPO (which adds an LSTM to the policy and value networks), the infrastructure above hasn't changed — training still runs entirely on CPU, not GPU. This is deliberate rather than an oversight, for two reasons. First, reliable GPU availability isn't really within reach on a student budget/Azure for Students credits. Second, and more fundamentally, it likely wouldn't help much here even if it were: this project's bottleneck has consistently been CPU-bound environment simulation (Perlin noise topology generation, collision checks, lidar raycasting) and rollout collection across parallel workers, not the size of the neural network doing backprop. Pairing a GPU with fewer than 4 CPUs would mostly leave it idle waiting on single-threaded `SubprocVecEnv` workers to step the environment, rather than meaningfully speeding up training.
+
 ## More on the training process
 
-In the first version of the project (that you can see on branch `v0` https://github.com/Josh012006/NanoGoal-RL/tree/v0), the model was just trained on randomly generated and highly varying worlds, be it easy, medium or hard mode. Moreover, it was trained only for 800_000 timesteps (approximatively 1300 complete episodes) which looking back at it, didn't represent much time for learning so much things. 
-The consequence was that even though the model was able to reduce the distance between it and the target and sometimes maintain a continuous trajectory, in most of the cases, it wasn't even reaching the target. The model at that time was taking too many unecessary actions and a lot of time just spent the whole episode spinning in circles before making any progress.
+NanoGoal-RL started, on the `v0` branch (https://github.com/Josh012006/NanoGoal-RL/tree/v0), as a first proof of concept: the agent was trained directly on randomly generated and highly varying worlds — easy, medium and hard all mixed together — for only 800,000 timesteps (~1,300 episodes), nowhere near enough to learn so much at once. The agent could reduce its distance to the target and sometimes hold a continuous trajectory, but rarely actually reached it, often spending a whole episode spinning in circles before making any progress. Two things were driving that behavior: the training conditions (the world itself) varied too much from one episode to the next for anything to stabilize, and there was no curriculum — easy, medium and hard were all being learned at the same time instead of progressively.
 
-That behavior was caused by two main things : 
-- the fact that the environments and other training conditions were changing too much from one episode to another
-- the learning wasn't like a curriculum, meaning that the model was learning, on easy, medium and hard mode at the same time
+`v1` addressed both problems. Using the environment's built-in seed-based reproducibility, I hand-picked 20 seeds per difficulty category and introduced an actual curriculum: 100% easy seeds for the easy stage, a 20%/80% easy/medium mix for medium, and a 10%/20%/70% easy/medium/hard mix for hard. I also introduced a growing pool of seeds per stage — starting at 2 and doubling roughly every 2,000 episodes (~1.2M timesteps) — so the set of worlds the agent trained on didn't change too abruptly episode to episode.
 
-So I did some fine tuning to improve its performance.
+`v2` then replaced the hand-picked seeds with an automated, principled classification. `classify_seeds.py` scores 10,000 seeds by running A* on the discrete grid and summing the total angular deviation (turns ≥ 45°) of the optimal path, which captures how many real wall detours a seed requires rather than just its raw distance. Seeds are split into **easy** (< 46° total deviation), **medium** (46°–270°) and **hard** (> 270°) — yielding roughly 5,549 easy, 1,202 medium and 824 hard reachable seeds out of ~7,575 total. The growing-pool idea from v1 was kept but retuned (pools now start at 4, doubling every 700/1,500/3,000 episodes for easy/medium/hard), with an asymmetric 40%/60% training split so easy (larger pool) needs less coverage than medium/hard. The remaining seeds in each category form a held-out test set used exclusively for evaluation in `eval.py`. v2 also brought a wave of infrastructure work: a precomputed topology cache (near-instant resets instead of recomputing Perlin noise every episode), `SubprocVecEnv` parallel environments, a larger rollout buffer, difficulty-scaled `n_epochs`, a fully automated CI/CD training pipeline (GitHub Actions plus a self-hosted systemd runner, with automatic evaluation, plotting and commits), a switch to a deterministic pure-numpy Perlin noise implementation after the third-party `noise` package was found to be non-deterministic across process launches, a critical cache bug fix (available space was being filtered against an empty topology instead of the real one), and trajectory visualization during rendering.
 
-The first step was to review the way the environments were chosen in the training process. Fortunately, I had already programmed the environnement so that a specific episode could be entirely reproductible by just passing a seed at the reset time. Instead of manually picking seeds, I wrote a script (`classify_seeds.py`) that automatically scores 10,000 seeds using the A* algorithm on the discrete grid. For each seed, A* computes the total angular deviation of the optimal path — that is, the sum of all significant direction changes (≥ 45°) along the path from agent to target. This captures not just the distance but also how many times the agent must navigate around walls. Seeds where no path exists are discarded. The remaining reachable seeds are partitioned into three difficulty categories based on this deviation:
+Even with all of this, v2's final model showed a real limitation on hard difficulty: across training, the success rate oscillated between roughly 0.5 and 0.6 with no clear upward trend, and the mean reward actually declined over the course of the run — training for longer didn't help, unlike what was observed for easy and medium. Looking at the agent's behavior, the pattern was consistent: hard seeds often require the agent to make a large turn that momentarily points it away from the target, and because the policy was purely feedforward (PPO with an MLP), it only ever reacts to the CURRENT observation — it has no way to remember that it is mid-detour. A few steps into turning away from a wall, the agent effectively "forgets" why it turned and drifts back toward the same wall it was trying to get around. **That's the problem this version of the project (v3) is trying to solve.**
 
-- **Easy** (< 46° total deviation): the agent can reach the target with near-straight-line navigation and no real wall detours
-- **Medium** (46°–270°): the agent must learn to navigate around 1 to 2 significant obstacles
-- **Hard** (> 270°): the agent must combine multiple navigation skills to handle complex, multi-detour paths
+### What changed in v3
 
-And then I decided of a repartition for the different steps of learning :
-- easy : 100% easy
-- medium : 20% easy and 80% medium
-- hard : 10% easy, 20% medium and 70% hard
+- **Switched the training algorithm from PPO to RecurrentPPO**: `"MultiInputPolicy"` → `"MultiInputLstmPolicy"` (via `sb3-contrib`), adding an LSTM to the policy and value networks so the agent can carry a hidden state across timesteps within an episode. This is the direct attempt at fixing the memorylessness problem described above (see Hausknecht & Stone, 2015, DRQN, in Methods and References).
+- **Widened the agent's perception**: the lidar now casts 16 rays instead of 8, with its range extended from 20 to 60 grid cells, so walls can be detected earlier and from more directions.
+- **Slowed the curriculum's seed-pool expansion** (700/1,500/3,000 → 1,500/4,000/10,000 episodes for easy/medium/hard) to keep each pool size stable for longer given the added recurrent state.
+- **Increased the medium-difficulty training budget** from 150M to 200M timesteps.
+- **Training still runs entirely on CPU** (see Training Infrastructure above) — the switch to RecurrentPPO didn't come with a move to GPU.
+- **Renamed saved model files** from `ppo_nanogoal_*` to `ppo_lstm_*` to make the architecture explicit and avoid ever loading a v2-era (non-recurrent) checkpoint into RecurrentPPO by mistake — the two architectures are not compatible, so `easy` had to be retrained from scratch under v3 before `medium`/`hard` can chain off it again.
+- **`eval.py`/`visual_eval.py` now manage the LSTM's hidden state explicitly**: reset at the start of every episode, carried across steps within it — required by `RecurrentPPO`, meaningless for plain `PPO`.
+- **Refactored `saving_plots.py`'s CLI**: replaced positional numeric arguments (`0`/`1`/`2` for difficulty, a raw `0`/`1` flag) with named `--model`/`--seed` options mirroring `eval.py`/`visual_eval.py`'s own convention, removing an entire class of hard-to-read, easy-to-mis-order invocations.
+- **Reworked the seed-coverage metrics**: `SeedCoverageCallback` no longer logs the raw `unique_seen` seed count (kept only the normalized `pct_unique_seen`), and now also logs a live per-category `success_rate` — the fraction of episodes on already-seen easy/medium/hard seeds that ended in success — giving more direct visibility into curriculum progress than seed coverage alone.
 
-The second step was to fix the way the environments or more precisely the seeds were varying during the training sessions. For that, I used pools of seeds. What I did was I restreined the number of seeds used at different times of the training.
-I started with a pool of 4 seeds from the set of seeds for the current difficulty and doubled the size of the pool at regular intervals — every 700 episodes for easy, 1500 for medium, and 3000 for hard. This made learning steady and added more stability to the way the algorithm was inferring the policy.
+## Training Hyperparameters
 
-For training, 40% of easy seeds are sampled randomly, while 60% of medium and hard seeds are used — the latter two categories have smaller pools so a larger fraction is needed to give the agent sufficient variety. The remaining seeds in each category form a held-out test set used exclusively for evaluation in `eval.py`, ensuring that the reported performance metrics reflect genuine generalization and not memorization of training environments.
+The table below reflects the `RecurrentPPO` configuration set in `train_easy.py`, `train_medium.py` and `train_hard.py`. Medium and hard each `.load()` the previous stage's checkpoint (`ppo_lstm_easy` → `ppo_lstm_medium` → `ppo_lstm_hard`), so the LSTM-related settings are only actually chosen once, at the easy stage, and simply carried forward through both later stages via the loaded checkpoint.
 
-### What changed in v2
-
-Several infrastructure and training improvements were made for this version:
-
-- **Improved seed classification with angular deviation**: difficulty is now measured by the total angular deviation of the A* path (sum of direction changes ≥ 45°), not just path length. This ensures easy seeds require no wall detours, medium seeds require 1–2, and hard seeds require complex multi-detour navigation. Out of ~7,575 reachable seeds, this yields ~5,549 easy, ~1,202 medium, and ~824 hard seeds.
-- **Asymmetric training split**: easy uses 40% of its seeds for training (large pool, less variety needed), while medium and hard use 60% to compensate for their smaller pools.
-- **Precomputed topology cache**: vessel topologies and free spaces are now precomputed once and stored on disk. This makes episode resets nearly instant instead of recomputing expensive Perlin noise maps at each episode, significantly reducing overhead.
-- **Parallel environments**: training now uses `SubprocVecEnv` to run 2 environments in parallel (one per CPU), doubling the data collection throughput. The number of environments is detected automatically from the available CPU count.
-- **Larger rollout buffer**: `n_steps` was doubled to 20,000 per environment to reduce the proportion of time spent in backpropagation relative to rollout collection, keeping both CPUs more consistently busy.
-- **Increased n_epochs by difficulty**: easy uses `n_epochs=10` (default), medium uses `n_epochs=15`, and hard uses `n_epochs=20`. More passes per rollout allow the model to extract more signal from complex episodes, acting as an implicit replay ratio increase for harder stages.
-- **Automated CI/CD training pipeline**: training is now triggered via GitHub Actions and runs as a systemd service on a self-hosted Digital Ocean droplet, completely decoupled from the runner lifecycle. The pipeline handles dependency installation, cache management, training, evaluation, plot generation, and commits results automatically. Email notifications are sent at key training milestones via SendGrid.
-- **Deterministic topology generation**: the third-party `noise` package was found to produce non-deterministic output across separate process launches for certain (base, octaves) combinations, silently corrupting seed-based difficulty classification and reproducibility. It was replaced with `perlin_noise.py`, a fully deterministic, vectorized, pure-numpy implementation — also ~25× faster.
-- **Critical bug fix in the topology cache builder**: `precompute_cache.py`'s clearance filter was checking wall proximity against an empty (all-zero) topology instead of the seed's actual generated topology, because the generated topology was never assigned to the environment instance before filtering. This silently gave every cached seed a wrong `available_space` (different count and content than a correct fresh computation), which cascaded into different agent/target/cell placements whenever a seed was served from the cache — making training and evaluation results irreproducible in a way that was very difficult to trace back to its source. Fixed by assigning the topology to the environment before filtering, matching `env.py`'s own reset() logic exactly.
-- **Trajectory visualization**: the agent's full path is now drawn as a dashed line during rendering, making it much easier to visually assess how it navigates toward the goal (or gets stuck) over the course of an episode.
+| Hyperparameter | Easy | Medium | Hard |
+|---|---|---|---|
+| Policy | `MultiInputLstmPolicy` | `MultiInputLstmPolicy` (loaded from `ppo_lstm_easy`) | `MultiInputLstmPolicy` (loaded from `ppo_lstm_medium`) |
+| `n_steps` | `20_000 // n_envs` | `20_000 // n_envs` | `20_000 // n_envs` |
+| `batch_size` | 200 | 200 (inherited, not overridden) | 200 (inherited, not overridden) |
+| `n_epochs` | 10 | 15 | 20 |
+| `learning_rate` | 3e-4 (default) | 1e-4 | 5e-5 |
+| `total_timesteps` | 12,000,000 | 200,000,000 | 400,000,000 |
+| `device` | `cpu` | `cpu` | `cpu` |
+| `lstm_hidden_size` | 256 (default) | 256 (inherited) | 256 (inherited) |
+| `n_lstm_layers` | 1 (default) | 1 (inherited) | 1 (inherited) |
+| `shared_lstm` | `False` (default) | `False` (inherited) | `False` (inherited) |
+| `enable_critic_lstm` | `True` (default) | `True` (inherited) | `True` (inherited) |
+| `gamma` | 0.99 (default) | 0.99 (inherited) | 0.99 (inherited) |
+| `gae_lambda` | 0.95 (default) | 0.95 (inherited) | 0.95 (inherited) |
+| `clip_range` | 0.2 (default) | 0.2 (inherited) | 0.2 (inherited) |
+| `ent_coef` | 0.0 (default) | 0.0 (inherited) | 0.0 (inherited) |
+| `vf_coef` | 0.5 (default) | 0.5 (inherited) | 0.5 (inherited) |
+| `max_grad_norm` | 0.5 (default) | 0.5 (inherited) | 0.5 (inherited) |
 
 ## The results of the training (see `eval.py` for the evaluation code)
 
@@ -630,11 +639,7 @@ Lastly, I tested **High schooler Billy** on easy and medium tests sets too to ma
 
 ## Final analysis
 
-The training metrics of the final model obtained show that **PPO alone struggles to recover an optimal behavior on hard difficulty environments**. Throughout the training, the success rate oscillates between 0.5 and 0.6 and the reward mean decreases. There isn't a clear improvement on the behavior of agent even after 400M steps, opposite to what was observed for the two previous training phases (easy and medium difficulty). The evaluation process and the [visual behavior](#behavior-of-the-model-trained-for-hard-mode) of the agent both confirm that the agent didn't learn any new useful behavior but worse, it lost part of its useful pre-learned conduct.
-
-It's explainable when we look at the challenge the agent is faced with for the hard level difficulty. The target is most of the time situated in a place that requires the agent to make a big turn involving turning its back on it. The observation only gives info on the distance to the target at a given time and the lidar doesn't always cover enough distance for the agent to know in advance that their is wall separating it from the target in the direction it has taken. With PPO, that optimizes the reward given those observation, the agent always comes back to the same wall because even if it tries to turn back, after some timesteps it already forgets that it is in a phase of escaping. 
-
-I argue that this limitation should be surmountable by using `RecurrentPPO`, a version of `PPO` that integrates `LSTM` to have a memory of the past states the agent has been in. Increasing the radius the pseudo-lidar covers should also help the agent detect the walls earlier and take meaningful actions to go around them. These changes, alongside some other improvements will be studied in a new version of the project on the [v3](https://github.com/Josh012006/NanoGoal-RL/tree/v3) branch.
+Coming soon.
 
 
 ## Installation
@@ -686,7 +691,7 @@ tensorboard --logdir logs/<hard_logs_folder>
 
 <br />
 
-Test a trained model over 500 episodes:
+Test a trained model over 100 episodes:
 ```bash
 python eval.py --model {easy,medium,hard} --seed {easy,medium,hard,mix}
 ```
@@ -695,7 +700,7 @@ where :
 - `--seed` : difficulty of the world seeds to test on (`mix` combines all three categories)
 The results will appear as CSV files in the results folder.
 
-Vizualize trajectories concerning the performances for the 500 test episodes:
+Vizualize trajectories concerning the performances for the 100 test episodes:
 ```bash
 python plots.py <csv_file_path>
 ```
