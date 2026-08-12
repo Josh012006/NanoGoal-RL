@@ -145,6 +145,14 @@ corresponding phase.
 - Pandas
 - Pygame
 
+## Training Infrastructure
+
+- **Provider**: DigitalOcean (initial — discontinued after the GitHub Student Developer Pack partnership ended), Microsoft Azure (current, via Azure for Students)
+- **CPU**: 2 vCPUs
+- **RAM**: 4 GiB
+- **Storage**: 80 GiB (DigitalOcean droplet) / separate OS disk + 128 GiB data disk (Azure)
+- **OS**: Ubuntu Server 24.04 LTS
+
 ## More on the training process
 
 In the first version of the project (that you can see on branch `v0` https://github.com/Josh012006/NanoGoal-RL/tree/v0), the model was just trained on randomly generated and highly varying worlds, be it easy, medium or hard mode. Moreover, it was trained only for 800_000 timesteps (approximatively 1300 complete episodes) which looking back at it, didn't represent much time for learning so much things. 
@@ -477,7 +485,7 @@ This time I tested **Middle schooler Billy** on easy and hard tests sets too. We
 <br />
 
 ### Hard mode training
-For the last step, I added **400,000,000 timesteps** (~13 days). Hard worlds require the agent to combine everything it has learned — navigating around multiple significant obstacles (> 270° total angular deviation) while maintaining directional progress toward a distant goal.
+For the last step, I added **400,000,000 timesteps** (~12 days). Hard worlds require the agent to combine everything it has learned — navigating around multiple significant obstacles (> 270° total angular deviation) while maintaining directional progress toward a distant goal.
 
 <p align="center">
   <img src="public/hard/reward_mean.png" width="800" alt="the reward mean during learning"><br>
@@ -614,6 +622,14 @@ Lastly, I tested **High schooler Billy** on easy and medium tests sets too to ma
     </td>
   </tr>
 </table>
+
+## Final analysis
+
+The training metrics of the final model obtained show that **PPO alone struggles to recover an optimal behavior on hard difficulty environments**. Throughout the training, the success rate oscillates between 0.5 and 0.6 and the reward mean decreases. There isn't a clear improvement on the behavior of agent even after 400M steps, opposite to what was observed for the two previous training phases (easy and medium difficulty). The evaluation process and the [visual behavior](#behavior-of-the-model-trained-for-hard-mode) of the agent both confirm that the agent didn't learn any new useful behavior but worse, it lost part of its useful pre-learned conduct.
+
+It's explainable when we look at the challenge the agent is faced with for the hard level difficulty. The target is most of the time situated in a place that requires the agent to make a big turn involving turning its back on it. The observation only gives info on the distance to the target at a given time and the lidar doesn't always cover enough distance for the agent to know in advance that their is wall separating it from the target in the direction it has taken. With PPO, that optimizes the reward given those observation, the agent always comes back to the same wall because even if it tries to turn back, after some timesteps it already forgets that it is in a phase of escaping. 
+
+I argue that this limitation should be surmountable by using `RecurrentPPO`, a version of `PPO` that integrates `LSTM` to have a memory of the past states the agent has been in. Increasing the radius the pseudo-lidar covers should also help the agent detect the walls earlier and take meaningful actions to go around them. These changes, alongside some other improvements will be studied in a new version of the project on the [v3](https://github.com/Josh012006/NanoGoal-RL/tree/v3) branch.
 
 
 ## Installation

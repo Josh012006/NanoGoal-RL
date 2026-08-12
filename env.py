@@ -187,7 +187,7 @@ class NanoEnv(gym.Env):
         # What the agent can observe
         self.observation_space = gym.spaces.Dict(
             {
-                # -1.0 and size will be used to reprensent element outside of the visible box
+                # -1.0 and size will be used to represent element outside of the visible box
                 "agent" : gym.spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32),
                 "mvt" : gym.spaces.Box(
                     low=np.array([0.0, -1.0, -1.0], dtype=np.float32), 
