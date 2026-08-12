@@ -134,7 +134,7 @@ corresponding phase.
   policy gradient algorithm using a clipped surrogate objective to limit destructive
   policy updates.
 
-- [ ] Hausknecht, M., & Stone, P. (2015).
+- [x] Hausknecht, M., & Stone, P. (2015).
   *Deep Recurrent Q-Learning for Partially Observable MDPs*. arXiv.
   [PDF](https://arxiv.org/pdf/1507.06527.pdf)
   Core memory architecture — introduces the integration of LSTM networks into deep reinforcement learning to handle partial observability (POMDPs), proving that recurrence allows agents to maintain state history over time when sensors are limited.
