@@ -98,6 +98,27 @@ class NanoEnv(gym.Env):
         # Memory cost is negligible: a few thousand int keys per pool at most.
         self._seed_counts = {"easy": {}, "medium": {}, "hard": {}}
 
+        # Tracks, per pool category, how many episodes have actually been run
+        # and how many of those were successes ({"easy": {"episodes": n,
+        # "successes": m}, ...}). This is what lets SeedCoverageCallback report
+        # a live per-category success rate over the seeds already seen during
+        # training -- e.g. "the agent succeeds on 62% of the hard episodes it
+        # has actually been run on so far", as opposed to a global success
+        # rate that would blur together seeds of very different difficulty.
+        self._category_episode_stats = {
+            "easy":   {"episodes": 0, "successes": 0},
+            "medium": {"episodes": 0, "successes": 0},
+            "hard":   {"episodes": 0, "successes": 0},
+        }
+
+        # The category ("easy", "medium" or "hard") the CURRENT episode's seed
+        # was drawn from -- set by _sample_from() at reset() time, consumed in
+        # step() once the episode actually ends, to attribute its outcome to
+        # the right category above. Stays None outside curriculum training
+        # (difficulty=None with an explicit seed, e.g. eval.py/visual_eval.py),
+        # where per-category success tracking doesn't apply.
+        self._current_category = None
+
 
         # Load topology cache if available
         if os.path.exists("topology_cache") or os.path.exists("topology_cache.db") or os.path.exists("topology_cache.dir"):
@@ -411,6 +432,7 @@ class NanoEnv(gym.Env):
         pool = seeds[:k]
         seed = pool[self._sampling_rng.integers(0, len(pool))]
         self._seed_counts[category][seed] = self._seed_counts[category].get(seed, 0) + 1
+        self._current_category = category
         return seed
 
     def _get_seed(self):
@@ -450,6 +472,15 @@ class NanoEnv(gym.Env):
         via VecEnv.env_method() from a training callback, then aggregated
         across all parallel sub-environments (see seed_coverage_callback.py)."""
         return self._seed_counts
+
+    def get_category_success_stats(self):
+        """Returns {"easy": {"episodes": n, "successes": m}, "medium": {...},
+        "hard": {...}} for THIS environment instance since it was created.
+        Meant to be called via VecEnv.env_method() from a training callback,
+        then summed across all parallel sub-environments (see
+        seed_coverage_callback.py) to compute a live per-category success
+        rate over the seeds already seen so far during training."""
+        return self._category_episode_stats
 
     def get_training_pool_sizes(self):
         """Returns the number of seeds in each training pool (identical across
@@ -763,6 +794,16 @@ class NanoEnv(gym.Env):
         truncated = self._time > self.__timelimit
         if truncated:
             reward += -10.0
+
+        # 4d. Category success-rate bookkeeping — once the episode actually
+        # ends (success, out-of-bounds, or timeout), attribute its outcome to
+        # the pool category its seed was drawn from (see _sample_from()), so
+        # SeedCoverageCallback can report a live per-category success rate
+        # over seeds already seen during training.
+        if (terminated or truncated) and self._current_category is not None:
+            stats = self._category_episode_stats[self._current_category]
+            stats["episodes"]  += 1
+            stats["successes"] += int(self._is_success)
 
 
         # ── 5. STEP FINALISATION ──────────────────────────────────────────────────
