@@ -123,7 +123,7 @@ if __name__ == "__main__":
     )
 
     model.learn(
-        total_timesteps=12_000_000,
+        total_timesteps=20_000_000,
         tb_log_name="easy",
         callback=CallbackList(callbacks)
     )
