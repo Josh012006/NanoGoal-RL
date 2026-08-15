@@ -40,7 +40,13 @@ if __name__ == "__main__":
 
     # Automatically detect the number of available CPUs
     n_envs = min(os.cpu_count(), 8)
-    n_steps = 20_000 // n_envs  # increased to reduce backprop proportion vs rollout
+    n_steps = 4_000 // n_envs  # kept modest (vs. the old 20_000) to bound LSTM hidden-state
+    # staleness: RecurrentPPO reuses the SAME hidden state, captured once at rollout
+    # time, across every PPO epoch on that rollout -- the more gradient steps taken
+    # on a rollout before it's refreshed, the more that captured state drifts out of
+    # sync with the (by-then-updated) weights that are supposed to have produced it.
+    # 4_000 total transitions/rollout still covers several complete easy episodes
+    # (episodes cap at 800 steps: min(3 + 2*distance, 40s) / 0.05s timestep).
     print(f"Running with {n_envs} parallel environments ({n_steps} steps each)")
 
     # SubprocVecEnv spawns one process per env, enabling true CPU parallelism
@@ -110,15 +116,20 @@ if __name__ == "__main__":
     # n_lstm_layers=1, shared_lstm=False, enable_critic_lstm=True) -- see the
     # discussion of alternatives (hidden size, shared vs separate actor/critic
     # LSTM) before committing to this for the full curriculum.
-    # n_epochs=10 (default) — learns quickly on fresh data
+    # n_epochs=8, batch_size=400 (down from n_epochs=10, batch_size=200): with
+    # n_steps*n_envs=4_000 transitions/rollout, this gives 10 minibatches/epoch,
+    # so 8*10=80 total gradient steps taken on a rollout before it's refreshed --
+    # down from ~1_000 under the old n_steps=20_000/batch_size=200/n_epochs=10
+    # config, i.e. roughly the same order of magnitude staleness reduction as
+    # medium/hard below, scaled to easy's smaller rollout.
     model = RecurrentPPO(
         "MultiInputLstmPolicy",
         env=vec_env,
         verbose=1,
         tensorboard_log="./logs/",
         n_steps=n_steps,
-        batch_size=200,
-        n_epochs=10,
+        batch_size=400,
+        n_epochs=8,
         device="cpu"  # avoid CPU/GPU non-determinism: never auto-select CUDA
     )
 

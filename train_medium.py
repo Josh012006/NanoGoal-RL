@@ -36,7 +36,10 @@ def make_env(worker_idx):
 if __name__ == "__main__":
     # Automatically detect the number of available CPUs
     n_envs = min(os.cpu_count(), 8)
-    n_steps = 20_000 // n_envs  # increased to reduce backprop proportion vs rollout
+    n_steps = 6_000 // n_envs  # kept modest (vs. the old 20_000) to bound LSTM hidden-state
+    # staleness -- see train_easy.py for the full rationale. Slightly larger than
+    # easy's 4_000 to give medium's more complex episodes a bit more diversity per
+    # update, while staying an order of magnitude below the old value.
     print(f"Running with {n_envs} parallel environments ({n_steps} steps each)")
 
     # SubprocVecEnv spawns one process per env, enabling true CPU parallelism
@@ -98,11 +101,17 @@ if __name__ == "__main__":
     # produced by the new train_easy.py -- a v2-era plain-PPO checkpoint has
     # no LSTM weights and will fail to load here (architecture mismatch), so
     # easy must be retrained from scratch once before medium can chain off it.
-    # n_epochs=15 — more passes per rollout to extract more signal from complex episodes
+    # n_epochs=8, batch_size=500: with n_steps*n_envs=6_000 transitions/rollout,
+    # this gives 12 minibatches/epoch, so 8*12=96 total gradient steps taken on
+    # a rollout before its LSTM hidden state is refreshed -- down from ~1_500
+    # under the old n_steps=20_000/batch_size=200 (inherited)/n_epochs=15 config.
+    # batch_size must be passed explicitly here (unlike n_steps/learning_rate/
+    # n_epochs it was never overridden before, so it silently stayed at whatever
+    # was pickled into ppo_lstm_easy -- 400 under the new train_easy.py).
     model = RecurrentPPO.load(
         "models/ppo_lstm_easy",
         env=vec_env,
-        custom_objects={"n_steps": n_steps, "learning_rate": 1e-4, "n_epochs": 15},
+        custom_objects={"n_steps": n_steps, "learning_rate": 1e-4, "n_epochs": 8, "batch_size": 500},
         device="cpu"  # avoid CPU/GPU non-determinism: never auto-select CUDA
     )
 

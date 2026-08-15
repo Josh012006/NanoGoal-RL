@@ -36,7 +36,11 @@ def make_env(worker_idx):
 if __name__ == "__main__":
     # Automatically detect the number of available CPUs
     n_envs = min(os.cpu_count(), 8)
-    n_steps = 20_000 // n_envs  # increased to reduce backprop proportion vs rollout
+    n_steps = 8_000 // n_envs  # kept modest (vs. the old 20_000) to bound LSTM hidden-state
+    # staleness -- see train_easy.py for the full rationale. Largest of the three
+    # since hard's rollouts are the most expensive to collect, so it's worth
+    # squeezing a bit more diversity per update even at a slightly higher
+    # (but still bounded) staleness cost than easy/medium.
     print(f"Running with {n_envs} parallel environments ({n_steps} steps each)")
 
     # SubprocVecEnv spawns one process per env, enabling true CPU parallelism
@@ -97,11 +101,17 @@ if __name__ == "__main__":
     # tried for the hard-mode plateau/regression documented in the README's
     # "Final analysis". Same architecture-compatibility note as train_medium.py:
     # models/ppo_lstm_medium must already be a RecurrentPPO checkpoint.
-    # n_epochs=20 — maximum reuse per rollout for complex multi-detour navigation
+    # n_epochs=10, batch_size=500: with n_steps*n_envs=8_000 transitions/rollout,
+    # this gives 16 minibatches/epoch, so 10*16=160 total gradient steps taken on
+    # a rollout before its LSTM hidden state is refreshed -- down from ~2_000
+    # under the old n_steps=20_000/batch_size=200 (inherited)/n_epochs=20 config.
+    # Slightly higher than easy/medium's budget (80/96) since hard's rollouts are
+    # the most expensive to collect -- a deliberate, bounded trade-off, not an
+    # oversight.
     model = RecurrentPPO.load(
         "models/ppo_lstm_medium",
         env=vec_env,
-        custom_objects={"n_steps": n_steps, "learning_rate": 5e-5, "n_epochs": 20},
+        custom_objects={"n_steps": n_steps, "learning_rate": 5e-5, "n_epochs": 10, "batch_size": 500},
         device="cpu"  # avoid CPU/GPU non-determinism: never auto-select CUDA
     )
 

@@ -215,7 +215,7 @@ The table below reflects the `RecurrentPPO` configuration set in `train_easy.py`
 When all the changes were done, I started training the model. After each training I plotted some interesting relationships between the results parameters.
 
 ### Easy mode training
-It lasted **20,000,000 timesteps** (~10 hours) — training was stopped early once TensorBoard/WandB metrics showed the model had already converged, well short of the original 50,000,000 timestep budget. Easy worlds require no wall detours — the agent only needs to learn to navigate in a near-straight line toward the target. After this stage, **Billy** was able to succeed for more than half of the easy worlds of the test set.
+For the easy mode, the model was trained for **12,000,000 timesteps** (~3 days). The first thing we can notice is that with RecurrentPPO, the training time is much longer. That's expected because there are now hidden states to be updated too. The reassuring part is that the performance of the model is as good it was previously with PPO. Visually, its behavior is also consistent. 
 
 <p align="center">
   <img src="public/easy/reward_mean.png" width="800" alt="the reward mean during learning"><br>
@@ -295,8 +295,7 @@ It lasted **20,000,000 timesteps** (~10 hours) — training was stopped early on
 </table>
 
 
-But I knew he could do more than that. But first before going to the medium and hard modes, I wanted to make sure that there would really be some learning being done.
-So I tested **Toddler Billy** on medium and hard tests sets. I only present here the return and distance plots :
+I then tested the easy level model on the medium and hard difficulty worlds to make sure later that there was a real challenge and also a real improvement. The challenge remains but it's interesting to see  :
 
 **Test of the model trained for easy mode on medium mode worlds**
 
