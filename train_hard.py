@@ -16,8 +16,9 @@ import env
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import CallbackList
+from stable_baselines3.common.utils import LinearSchedule
 from sb3_contrib import RecurrentPPO
-from checkpoint_callback import KeepLastTwoCheckpoints
+from checkpoint_callback import KeepLastNCheckpoints
 from seed_coverage_callback import SeedCoverageCallback
 
 
@@ -36,7 +37,7 @@ def make_env(worker_idx):
 if __name__ == "__main__":
     # Automatically detect the number of available CPUs
     n_envs = min(os.cpu_count(), 8)
-    n_steps = 8_000 // n_envs  # kept modest (vs. the old 20_000) to bound LSTM hidden-state
+    n_steps = 16_000 // n_envs  # kept modest (vs. the old 20_000) to bound LSTM hidden-state
     # staleness -- see train_easy.py for the full rationale. Largest of the three
     # since hard's rollouts are the most expensive to collect, so it's worth
     # squeezing a bit more diversity per update even at a slightly higher
@@ -51,10 +52,11 @@ if __name__ == "__main__":
     checkpoint_path = f"./checkpoints/hard/{run_id}/"
     print(f"Checkpoint path: {checkpoint_path}")
 
-    checkpoint_callback = KeepLastTwoCheckpoints(
+    checkpoint_callback = KeepLastNCheckpoints(
         save_freq=1_000_000,
         save_path=checkpoint_path,
-        name_prefix="ppo_hard"
+        name_prefix="ppo_hard",
+        keep_last_n=10
     )
 
     # Tracks real per-seed training coverage (how many individual seeds from
@@ -101,17 +103,25 @@ if __name__ == "__main__":
     # tried for the hard-mode plateau/regression documented in the README's
     # "Final analysis". Same architecture-compatibility note as train_medium.py:
     # models/ppo_lstm_medium must already be a RecurrentPPO checkpoint.
-    # n_epochs=10, batch_size=500: with n_steps*n_envs=8_000 transitions/rollout,
-    # this gives 16 minibatches/epoch, so 10*16=160 total gradient steps taken on
-    # a rollout before its LSTM hidden state is refreshed -- down from ~2_000
-    # under the old n_steps=20_000/batch_size=200 (inherited)/n_epochs=20 config.
-    # Slightly higher than easy/medium's budget (80/96) since hard's rollouts are
-    # the most expensive to collect -- a deliberate, bounded trade-off, not an
-    # oversight.
+    # n_epochs=10, batch_size=2_000: with n_steps*n_envs=16_000 transitions/rollout,
+    # this gives 8 minibatches/epoch, so 10*8=80 total gradient steps taken on a
+    # rollout before its LSTM hidden state is refreshed -- down from ~2_000 under
+    # the old n_steps=20_000/batch_size=200 (inherited)/n_epochs=20 config. See
+    # train_easy.py for why batch_size=2_000 rather than the full rollout.
+    #
+    # learning_rate: a fresh LinearSchedule continuing where medium's ended
+    # (1e-5), decaying further over hard's own 400M-step budget -- see
+    # train_easy.py for the general rationale (entropy collapse -> late-training
+    # instability at a flat LR).
     model = RecurrentPPO.load(
         "models/ppo_lstm_medium",
         env=vec_env,
-        custom_objects={"n_steps": n_steps, "learning_rate": 5e-5, "n_epochs": 10, "batch_size": 500},
+        custom_objects={
+            "n_steps": n_steps,
+            "learning_rate": LinearSchedule(start=1e-5, end=2e-6, end_fraction=1.0),
+            "n_epochs": 10,
+            "batch_size": 2_000,
+        },
         device="cpu"  # avoid CPU/GPU non-determinism: never auto-select CUDA
     )
 

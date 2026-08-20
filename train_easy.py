@@ -17,8 +17,9 @@ from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import CallbackList
+from stable_baselines3.common.utils import LinearSchedule
 from sb3_contrib import RecurrentPPO
-from checkpoint_callback import KeepLastTwoCheckpoints
+from checkpoint_callback import KeepLastNCheckpoints
 from seed_coverage_callback import SeedCoverageCallback
 
 
@@ -40,13 +41,16 @@ if __name__ == "__main__":
 
     # Automatically detect the number of available CPUs
     n_envs = min(os.cpu_count(), 8)
-    n_steps = 4_000 // n_envs  # kept modest (vs. the old 20_000) to bound LSTM hidden-state
+    n_steps = 8_000 // n_envs  # kept modest (vs. the old 20_000) to bound LSTM hidden-state
     # staleness: RecurrentPPO reuses the SAME hidden state, captured once at rollout
     # time, across every PPO epoch on that rollout -- the more gradient steps taken
     # on a rollout before it's refreshed, the more that captured state drifts out of
     # sync with the (by-then-updated) weights that are supposed to have produced it.
-    # 4_000 total transitions/rollout still covers several complete easy episodes
-    # (episodes cap at 800 steps: min(3 + 2*distance, 40s) / 0.05s timestep).
+    # 8_000 total transitions/rollout (with batch_size=2_000 below) keeps whole
+    # episodes inside a single minibatch far more often than the old batch_size=200
+    # did -- episodes cap at 800 steps (min(3 + 2*distance, 40s) / 0.05s timestep),
+    # so a 200-400-sized minibatch was almost guaranteed to slice a long episode in
+    # half mid-sequence, forcing a stale hidden state back in at that arbitrary cut.
     print(f"Running with {n_envs} parallel environments ({n_steps} steps each)")
 
     # SubprocVecEnv spawns one process per env, enabling true CPU parallelism
@@ -57,10 +61,14 @@ if __name__ == "__main__":
     checkpoint_path = f"./checkpoints/easy/{run_id}/"
     print(f"Checkpoint path: {checkpoint_path}")
 
-    checkpoint_callback = KeepLastTwoCheckpoints(
+    checkpoint_callback = KeepLastNCheckpoints(
         save_freq=1_000_000,
         save_path=checkpoint_path,
-        name_prefix="ppo_easy"
+        name_prefix="ppo_easy",
+        keep_last_n=10  # up from 2 -- gives more room to go back and pick a
+        # pre-regression checkpoint (see the README's training notes) instead
+        # of being stuck with only the most recent 2 if the best one turns out
+        # to be further back than that.
     )
 
     # Tracks real per-seed training coverage (how many individual seeds from
@@ -116,20 +124,46 @@ if __name__ == "__main__":
     # n_lstm_layers=1, shared_lstm=False, enable_critic_lstm=True) -- see the
     # discussion of alternatives (hidden size, shared vs separate actor/critic
     # LSTM) before committing to this for the full curriculum.
-    # n_epochs=8, batch_size=400 (down from n_epochs=10, batch_size=200): with
-    # n_steps*n_envs=4_000 transitions/rollout, this gives 10 minibatches/epoch,
-    # so 8*10=80 total gradient steps taken on a rollout before it's refreshed --
-    # down from ~1_000 under the old n_steps=20_000/batch_size=200/n_epochs=10
-    # config, i.e. roughly the same order of magnitude staleness reduction as
-    # medium/hard below, scaled to easy's smaller rollout.
+    # n_epochs=8, batch_size=2_000: with n_steps*n_envs=8_000 transitions/rollout,
+    # this gives 4 minibatches/epoch, so 8*4=32 total gradient steps taken on a
+    # rollout before its LSTM hidden state is refreshed -- down from ~1_000 under
+    # the old n_steps=20_000/batch_size=200/n_epochs=10 config. batch_size=2_000
+    # (~2.5x the 800-step episode cap) was chosen over the theoretically-cleanest
+    # fix (batch_size = full rollout, i.e. no minibatching at all, which would
+    # fully eliminate mid-episode stale-state reinjection) because that measured
+    # ~1.7GB peak RAM on this environment's 4GB VM and ran ~2.3x slower wall-clock
+    # than batch_size=2_000 in a smoke test -- not worth it for a residual risk
+    # that's already rare at this batch size, rather than the near-certainty it
+    # was at batch_size=200-400.
+    #
+    # ent_coef=0.01, clip_range=0.1: a first easy run at the old hyperparameters
+    # showed entropy collapsing steadily from step 0 (train/entropy_loss, which
+    # is -entropy, rising from -2.8 to +3.7 over 17M steps -- i.e. actual entropy
+    # falling continuously, unopposed, since ent_coef defaulted to 0.0) alongside
+    # policy_gradient_loss and value_loss both blowing up after ~8-12M steps. A
+    # near-deterministic Gaussian policy (very low action std) makes PPO's
+    # probability ratios hypersensitive to small weight changes, which is a
+    # well-documented general PPO late-training instability mode, independent of
+    # the LSTM-specific staleness issue above. ent_coef=0.01 keeps some pressure
+    # against entropy collapsing to that regime; clip_range=0.1 (down from the
+    # 0.2 default) tightens the trust region as a second line of defense against
+    # any single update (destabilized by either mechanism) moving too far.
+    #
+    # learning_rate: a LinearSchedule instead of a flat value, since the same run
+    # trained fine for its first ~8M steps at a flat 3e-4 -- decaying from the
+    # start would have slowed down learning that was already working, so this
+    # only tapers off over the course of training rather than starting low.
     model = RecurrentPPO(
         "MultiInputLstmPolicy",
         env=vec_env,
         verbose=1,
         tensorboard_log="./logs/",
         n_steps=n_steps,
-        batch_size=400,
+        batch_size=2_000,
         n_epochs=8,
+        ent_coef=0.01,
+        clip_range=0.1,
+        learning_rate=LinearSchedule(start=3e-4, end=5e-5, end_fraction=1.0),
         device="cpu"  # avoid CPU/GPU non-determinism: never auto-select CUDA
     )
 

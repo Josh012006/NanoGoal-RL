@@ -141,6 +141,15 @@ corresponding phase.
   [PDF](https://arxiv.org/pdf/1507.06527.pdf)
   Core memory architecture — introduces the integration of LSTM networks into deep reinforcement learning to handle partial observability (POMDPs), proving that recurrence allows agents to maintain state history over time when sensors are limited.
 
+- [x] Kapturowski, S., Ostrovski, G., Quan, J., Munos, R., & Dabney, W. (2019).
+  *Recurrent Experience Replay in Distributed Reinforcement Learning*. ICLR 2019.
+  [OpenReview](https://openreview.net/forum?id=r1lyTjAqYX)
+  Explains the hidden-state staleness problem in recurrent RL — the LSTM's hidden
+  state, captured once during rollout collection, becomes increasingly inconsistent
+  with the network's weights as those weights keep updating across training. R2D2
+  addresses this with a "burn-in" period that recomputes a fresh hidden state before
+  learning from a sequence, rather than reusing the stale one.
+
 ## Technologies Used
 
 - Python
@@ -185,6 +194,10 @@ Even with all of this, v2's final model showed a real limitation on hard difficu
 - **Refactored `saving_plots.py`'s CLI**: replaced positional numeric arguments (`0`/`1`/`2` for difficulty, a raw `0`/`1` flag) with named `--model`/`--seed` options mirroring `eval.py`/`visual_eval.py`'s own convention, removing an entire class of hard-to-read, easy-to-mis-order invocations.
 - **Reworked the seed-coverage metrics**: `SeedCoverageCallback` no longer logs the raw `unique_seen` seed count (kept only the normalized `pct_unique_seen`), and now also logs a live per-category `success_rate` — the fraction of episodes on already-seen easy/medium/hard seeds that ended in success — giving more direct visibility into curriculum progress than seed coverage alone.
 - **Pinned `numpy` to `2.4.1` instead of `2.4.0`**: `2.4.0` was yanked from PyPI shortly after release over a backward-compatibility bug (a typo in `SeedlessSequence` breaking wheels built against `numpy < 2.4.0` via the `random` Cython API), which pip surfaces as an install-time warning. `2.4.1` is the immediate patch release that fixes exactly that bug and nothing else.
+- **Retuned `n_steps`/`batch_size`/`n_epochs` per curriculum stage** to address an LSTM hidden-state staleness issue found by inspecting `sb3-contrib`'s source (see "Final analysis" below for the full mechanism): `batch_size` raised from 200 to 2,000 — roughly 2.5x the 800-step maximum episode length — so a whole episode fits inside a single minibatch far more often instead of getting sliced mid-sequence, and `n_epochs` brought down (10/15/20 → 8/8/10) to further limit how many gradient steps reuse a captured, increasingly-outdated hidden state before the next rollout refreshes it.
+- **Added an entropy bonus and tightened the trust region**: `ent_coef` raised from its 0.0 default to `0.01`, and `clip_range` lowered from 0.2 to `0.1`, after a longer easy training run showed entropy collapsing continuously from step 0 (nothing was opposing it) alongside a late-training blow-up in `policy_gradient_loss` and `value_loss` — a well-documented general PPO instability mode, independent of the LSTM-specific staleness issue above.
+- **Switched `learning_rate` from a flat per-stage value to a `LinearSchedule`** that decays over each stage's own training budget instead of staying constant for the full 12M/200M/400M steps of a stage — chosen over an unconditionally lower flat rate since the first several million steps of training were working fine at the original rate.
+- **Increased checkpoint retention**: `KeepLastTwoCheckpoints` renamed to `KeepLastNCheckpoints` with a configurable `keep_last_n` (now 10, up from a hardcoded 2), giving much more room to go back and recover a pre-regression checkpoint if a run degrades late, instead of being stuck with only the most recent two.
 
 ## Training Hyperparameters
 
@@ -193,10 +206,12 @@ The table below reflects the `RecurrentPPO` configuration set in `train_easy.py`
 | Hyperparameter | Easy | Medium | Hard |
 |---|---|---|---|
 | Policy | `MultiInputLstmPolicy` | `MultiInputLstmPolicy` (loaded from `ppo_lstm_easy`) | `MultiInputLstmPolicy` (loaded from `ppo_lstm_medium`) |
-| `n_steps` | `20_000 // n_envs` | `20_000 // n_envs` | `20_000 // n_envs` |
-| `batch_size` | 200 | 200 (inherited, not overridden) | 200 (inherited, not overridden) |
-| `n_epochs` | 10 | 15 | 20 |
-| `learning_rate` | 3e-4 (default) | 1e-4 | 5e-5 |
+| `n_steps` | `8_000 // n_envs` | `12_000 // n_envs` | `16_000 // n_envs` |
+| `batch_size` | 2,000 | 2,000 | 2,000 |
+| `n_epochs` | 8 | 8 | 10 |
+| `learning_rate` | `LinearSchedule(3e-4 → 5e-5)` | `LinearSchedule(5e-5 → 1e-5)` | `LinearSchedule(1e-5 → 2e-6)` |
+| `ent_coef` | 0.01 | 0.01 (inherited) | 0.01 (inherited) |
+| `clip_range` | 0.1 | 0.1 (inherited) | 0.1 (inherited) |
 | `total_timesteps` | 20,000,000 | 200,000,000 | 400,000,000 |
 | `device` | `cpu` | `cpu` | `cpu` |
 | `lstm_hidden_size` | 256 (default) | 256 (inherited) | 256 (inherited) |
@@ -205,17 +220,17 @@ The table below reflects the `RecurrentPPO` configuration set in `train_easy.py`
 | `enable_critic_lstm` | `True` (default) | `True` (inherited) | `True` (inherited) |
 | `gamma` | 0.99 (default) | 0.99 (inherited) | 0.99 (inherited) |
 | `gae_lambda` | 0.95 (default) | 0.95 (inherited) | 0.95 (inherited) |
-| `clip_range` | 0.2 (default) | 0.2 (inherited) | 0.2 (inherited) |
-| `ent_coef` | 0.0 (default) | 0.0 (inherited) | 0.0 (inherited) |
 | `vf_coef` | 0.5 (default) | 0.5 (inherited) | 0.5 (inherited) |
 | `max_grad_norm` | 0.5 (default) | 0.5 (inherited) | 0.5 (inherited) |
+
+`n_steps`/`batch_size`/`n_epochs`/`ent_coef`/`clip_range`/`learning_rate` above reflect the retuned values described in "What changed in v3" — see "Final analysis" below for why they changed. The results and plots in the next section were produced before this retuning, with the original `n_steps=20_000 // n_envs`, `batch_size=200`, `n_epochs=10/15/20`, `ent_coef=0.0`, `clip_range=0.2` and flat `learning_rate` configuration; a re-run with the updated hyperparameters is the immediate next step.
 
 ## The results of the training (see `eval.py` for the evaluation code)
 
 When all the changes were done, I started training the model. After each training I plotted some interesting relationships between the results parameters.
 
 ### Easy mode training
-For the easy mode, the model was trained for **12,000,000 timesteps** (~3 days). The first thing we can notice is that with RecurrentPPO, the training time is much longer. That's expected because there are now hidden states to be updated too. The reassuring part is that the performance of the model is as good it was previously with PPO. Visually, its behavior is also consistent. 
+For the easy mode, the model was trained for **20,000,000 timesteps** (~3 days). The first thing we can notice is that with RecurrentPPO, the training time is much longer. That's expected because there are now hidden states to be updated too. The reassuring part is that the performance of the model is as good it was previously with PPO. Visually, its behavior is also consistent. 
 
 <p align="center">
   <img src="public/easy/reward_mean.png" width="800" alt="the reward mean during learning"><br>
@@ -639,7 +654,17 @@ Lastly, I tested **High schooler Billy** on easy and medium tests sets too to ma
 
 ## Final analysis
 
-Coming soon.
+The results above look solid on paper, but letting the easy run continue past the checkpoint reported in "Easy mode training" surfaced a pattern worth documenting in detail, since it directly shaped the retuned hyperparameters listed in "Training Hyperparameters" and in "What changed in v3" above.
+
+On that longer run, `rollout/success_rate` climbs steadily to ~0.95-0.97 by around step 9-10M, then **declines** over the following steps, ending noticeably lower. That decline isn't just noise: `train/policy_gradient_loss` grows roughly 20x over the same window, and `train/value_loss` bottoms out around the same point before rising again. If the very last checkpoint of a long run is promoted as the final model without checking for this, it can end up meaningfully worse than an earlier one — the same lesson v2 already learned the hard way on hard difficulty (see "More on the training process" above), now showing up on easy too, at a much shorter timescale. This is why checkpoint retention was increased from 2 to 10 (see "What changed in v3").
+
+Two distinct, compounding mechanisms explain the decline:
+
+**1. LSTM hidden-state staleness.** `RecurrentPPO` captures the LSTM's hidden state once per minibatch, at rollout-collection time, with the weights as they were at that moment — then reuses that exact captured state as the BPTT starting point across every PPO epoch on that minibatch, even as the weights keep changing epoch to epoch. Episodes here run up to 800 steps (`min(3 + 2*distance, 40s) / 0.05s`), and the batch size used to be only 200 — far smaller than that — so a long episode would almost always get sliced across multiple minibatches. At every one of those artificial cuts, a stale hidden state (produced by older weights) gets forced back in as the "starting point" mid-episode, computed onward with already-updated weights. `n_steps`, `batch_size` and `n_epochs` were retuned specifically to address this: `batch_size` was raised to 2,000 — roughly 2.5x the 800-step maximum episode length — so a whole episode now fits inside a single minibatch far more often, and `n_epochs` was brought down (10/15/20 → 8/8/10) to further reduce how many gradient steps get taken on a rollout before its hidden states are refreshed by the next collection pass.
+
+**2. Entropy collapse.** With `ent_coef=0.0` (the untouched default before this fix), nothing opposed the policy's action distribution becoming steadily more deterministic (lower standard deviation) as training progressed. `train/entropy_loss` — which SB3 logs as *negative* entropy, not entropy itself — rose steadily from about -2.8 to +3.7 over the run, meaning the actual entropy fell continuously from the very first step and never plateaued. A near-deterministic Gaussian policy makes PPO's probability ratios hypersensitive to small weight updates: a small shift in the mean action can swing the log-probability sharply when the standard deviation is already tiny, which is a well-documented general PPO instability mode, independent of the LSTM-specific staleness issue above. `ent_coef=0.01` and a tighter `clip_range` (0.2 → 0.1) were added to counter this, along with switching `learning_rate` from a flat value to a `LinearSchedule` that decays over each stage's own training budget — the first several million steps of the run were working fine at the original flat rate, so the fix only tapers the rate down over time rather than starting low and slowing down learning that wasn't broken.
+
+None of these fixes have been validated with a full retraining run yet — re-running the curriculum with the updated hyperparameters above is the immediate next step for this branch.
 
 
 ## Installation
