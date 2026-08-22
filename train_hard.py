@@ -53,7 +53,7 @@ if __name__ == "__main__":
     print(f"Checkpoint path: {checkpoint_path}")
 
     checkpoint_callback = KeepLastNCheckpoints(
-        save_freq=1_000_000,
+        save_freq=100_000,
         save_path=checkpoint_path,
         name_prefix="ppo_hard",
         keep_last_n=10
