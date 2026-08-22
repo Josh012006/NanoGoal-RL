@@ -240,16 +240,23 @@ What we can also notice that with the presence of the entropy bonus, the entropy
       <img src="public/easy/success_rate.png" width="800" alt="success rate during learning"><br>
       <u><em>Evolution of success rate during learning episodes</em></u>
     </td>
+  </tr>
+  <tr><td></td></tr>
+  <tr>
     <td align="center">
       <img src="public/easy/pool_increase.png" width="800" alt="pool increase"><br>
       <u><em>The easy seeds' pool increase during training (in %)</em></u>
     </td>
   </tr>
+  <tr><td></td></tr>
   <tr>
     <td align="center">
       <img src="public/easy/explained_variance.png" width="800" alt="explained variance during learning"><br>
       <u><em>Evolution of explained variance during learning</em></u>
     </td>
+  </tr>
+  <tr><td></td></tr>
+  <tr>
     <td align="center">
       <img src="public/easy/entropy_loss.png" width="800" alt="entropy loss during learning"><br>
       <u><em>Evolution of entropy</em></u>
@@ -258,6 +265,8 @@ What we can also notice that with the presence of the entropy bonus, the entropy
 </table>
 
 <br />
+
+I also evaluate this model on 500 easy level seeds for a more rigorous view on its real deterministic performance :
 
 <table align="center">
   <tr>
