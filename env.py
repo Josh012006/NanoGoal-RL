@@ -7,7 +7,7 @@ import pygame
 import json
 from numba import njit
 from perlin_noise import fbm2d
-from utils import main_related_component, is_navigable
+from utils import main_related_component, clearance_mask_jit, is_navigable_jit
 
 from gymnasium.envs.registration import register
 
@@ -573,6 +573,16 @@ class NanoEnv(gym.Env):
                 if len(available_space) > 100:
                     found = True
 
+        # Precomputed ONCE per reset (the topology doesn't change within an
+        # episode) so the target-placement retry loop below -- which can call
+        # this navigability check several times if early candidates get
+        # rejected -- does O(1) lookups instead of re-scanning an O(radius^2)
+        # box from scratch at every one of the potentially thousands of cells
+        # a single BFS call visits. See utils.py's clearance_mask_jit/
+        # is_navigable_jit docstrings for the full rationale; verified
+        # bit-identical to the original is_navigable/surroundings_ok.
+        _clearance_mask = clearance_mask_jit(self._vessel_topology, int(np.ceil(self._agent_radius)))
+
         # ── Agent and target placement (always random) ───────────────────────
         repeat1 = True
         while repeat1:
@@ -594,7 +604,11 @@ class NanoEnv(gym.Env):
             target_int           = self.np_random.integers(0, len(to_explore))
             init_target_location = to_explore[target_int].copy()
             d0                   = np.linalg.norm(self._agent_location - init_target_location)
-            if d0 >= 35 and is_navigable(self._vessel_topology, self._agent_location, init_target_location, self._agent_radius):
+            if d0 >= 35 and is_navigable_jit(
+                self._vessel_topology, _clearance_mask,
+                int(self._agent_location[0]), int(self._agent_location[1]),
+                int(init_target_location[0]), int(init_target_location[1]),
+            ):
                 repeat2                  = False
                 self._target_location    = init_target_location
                 self.__initial_distance  = d0
