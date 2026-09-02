@@ -245,7 +245,7 @@ What we can also notice that with the presence of the entropy bonus, the entropy
   <tr>
     <td align="center">
       <img src="public/easy/pool_increase.png" width="800" alt="pool increase"><br>
-      <u><em>The easy seeds pool's size evolution during training (in %)</em></u>
+      <u><em>The easy seeds pool's size evolution during training (displayed in %)</em></u>
     </td>
   </tr>
   <tr><td></td></tr>
@@ -385,7 +385,7 @@ Next, I trained the model on medium level seeds, starting from the easy level mo
 
 <table align="center">
   <tr>
-    <td align="center">
+    <td align="center" colspan="2">
       <img src="public/medium/success_rate.png" width="800" alt="success rate during learning"><br>
       <u><em>Evolution of success rate during learning episodes</em></u>
     </td>
@@ -394,23 +394,23 @@ Next, I trained the model on medium level seeds, starting from the easy level mo
   <tr>
     <td align="center">
       <img src="public/medium/pool_increase_easy.png" width="800" alt="pool increase"><br>
-      <u><em>The easy seeds pool's size evolution during training (in %)</em></u>
+      <u><em>The easy seeds pool's size evolution during training (displayed in %)</em></u>
     </td>
     <td align="center">
       <img src="public/medium/pool_increase_medium.png" width="800" alt="pool increase"><br>
-      <u><em>The medium seeds pool's size evolution during training (in %)</em></u>
+      <u><em>The medium seeds pool's size evolution during training (displayed in %)</em></u>
     </td>
   </tr>
   <tr><td></td></tr>
   <tr>
-    <td align="center">
+    <td align="center" colspan="2">
       <img src="public/medium/explained_variance.png" width="800" alt="explained variance during learning"><br>
       <u><em>Evolution of explained variance during learning</em></u>
     </td>
   </tr>
   <tr><td></td></tr>
   <tr>
-    <td align="center">
+    <td align="center" colspan="2">
       <img src="public/medium/entropy_loss.png" width="800" alt="entropy loss during learning"><br>
       <u><em>Evolution of entropy</em></u>
     </td>
