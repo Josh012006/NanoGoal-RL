@@ -196,7 +196,7 @@ Even with all of this, v2's final model showed a real limitation on hard difficu
 - **Pinned `numpy` to `2.4.1` instead of `2.4.0`**: `2.4.0` was yanked from PyPI shortly after release over a backward-compatibility bug (a typo in `SeedlessSequence` breaking wheels built against `numpy < 2.4.0` via the `random` Cython API), which pip surfaces as an install-time warning. `2.4.1` is the immediate patch release that fixes exactly that bug and nothing else.
 - **Retuned `n_steps`/`batch_size`/`n_epochs` per curriculum stage** to address an LSTM hidden-state staleness issue found by inspecting `sb3-contrib`'s source (see "Final analysis" below for the full mechanism): `batch_size` raised from 200 to 2,000 — roughly 2.5x the 800-step maximum episode length — so a whole episode fits inside a single minibatch far more often instead of getting sliced mid-sequence, and `n_epochs` brought down (10/15/20 → 8/8/10) to further limit how many gradient steps reuse a captured, increasingly-outdated hidden state before the next rollout refreshes it.
 - **Added an entropy bonus and tightened the trust region**: `ent_coef` raised from its 0.0 default to `0.01`, and `clip_range` lowered from 0.2 to `0.1`, after a longer easy training run showed entropy collapsing continuously from step 0 (nothing was opposing it) alongside a late-training blow-up in `policy_gradient_loss` and `value_loss` — a well-documented general PPO instability mode, independent of the LSTM-specific staleness issue above.
-- **Switched `learning_rate` from a flat per-stage value to a `LinearSchedule`** that decays over each stage's own training budget instead of staying constant for the full 20M/200M/400M steps of a stage — chosen over an unconditionally lower flat rate since the first several million steps of training were working fine at the original rate.
+- **Switched `learning_rate` from a flat per-stage value to a `LinearSchedule`** that decays over each stage's own training budget instead of staying constant for the full training steps of a stage — chosen over an unconditionally lower flat rate since the first several million steps of training were working fine at the original rate.
 - **Increased checkpoint retention**: `KeepLastTwoCheckpoints` renamed to `KeepLastNCheckpoints` with a configurable `keep_last_n` (now 10, up from a hardcoded 2), giving much more room to go back and recover a pre-regression checkpoint if a run degrades late, instead of being stuck with only the most recent two.
 
 ## Training Hyperparameters
@@ -212,7 +212,7 @@ The table below reflects the `RecurrentPPO` configuration set in `train_easy.py`
 | `learning_rate` | `LinearSchedule(3e-4 → 5e-5)` | `LinearSchedule(5e-5 → 1e-5)` | `LinearSchedule(1e-5 → 2e-6)` |
 | `ent_coef` | 0.01 | 0.01 (inherited) | 0.01 (inherited) |
 | `clip_range` | 0.1 | 0.1 (inherited) | 0.1 (inherited) |
-| `total_timesteps` | 20,000,000 | 200,000,000 | 400,000,000 |
+| `total_timesteps` | 12,000,000 | 25,000,000 | 400,000,000 |
 | `device` | `cpu` | `cpu` | `cpu` |
 | `lstm_hidden_size` | 256 (default) | 256 (inherited) | 256 (inherited) |
 | `n_lstm_layers` | 1 (default) | 1 (inherited) | 1 (inherited) |
@@ -245,7 +245,7 @@ What we can also notice that with the presence of the entropy bonus, the entropy
   <tr>
     <td align="center">
       <img src="public/easy/pool_increase.png" width="800" alt="pool increase"><br>
-      <u><em>The easy seeds' pool increase during training (in %)</em></u>
+      <u><em>The easy seeds pool's size evolution during training (in %)</em></u>
     </td>
   </tr>
   <tr><td></td></tr>
@@ -381,13 +381,7 @@ I also tested on medium and hard level seeds to make sure the presence of memory
 
 ### Medium mode training
 
-Coming soon !
-<!-- I trained the easy model for another **200,000,000 timesteps** (~5 days) but this time on medium level seeds. Medium worlds require the agent to navigate around 1 to 2 significant obstacles — it must learn when to turn and how to recover its heading after a detour.
-
-<p align="center">
-  <img src="public/medium/reward_mean.png" width="800" alt="the reward mean during learning"><br>
-  <u><em>Evolution of reward during learning episodes</em></u>
-</p>
+Next, I trained the model on medium level seeds, starting from the easy level model as a baseline. Medium worlds require the agent to navigate around 1 to 2 significant obstacles — it must learn when to turn and how to recover its heading after a detour. I previously planned to train it for another **200,000,000 timesteps**, but after **19,000,000 timesteps** (~3.8 days) the agent had already achieved a hight success rate and had seen all the seeds in the pool. So I stopped the training. Here are the training metrics.
 
 <table align="center">
   <tr>
@@ -396,21 +390,36 @@ Coming soon !
       <u><em>Evolution of success rate during learning episodes</em></u>
     </td>
   </tr>
+  <tr><td></td></tr>
+  <tr>
+    <td align="center">
+      <img src="public/medium/pool_increase_easy.png" width="800" alt="pool increase"><br>
+      <u><em>The easy seeds pool's size evolution during training (in %)</em></u>
+    </td>
+    <td align="center">
+      <img src="public/medium/pool_increase_medium.png" width="800" alt="pool increase"><br>
+      <u><em>The medium seeds pool's size evolution during training (in %)</em></u>
+    </td>
+  </tr>
+  <tr><td></td></tr>
   <tr>
     <td align="center">
       <img src="public/medium/explained_variance.png" width="800" alt="explained variance during learning"><br>
-      <u><em>Evolution of explained variance during learning — stays consistently above 0.92, indicating the value function learned well</em></u>
+      <u><em>Evolution of explained variance during learning</em></u>
     </td>
   </tr>
+  <tr><td></td></tr>
   <tr>
     <td align="center">
       <img src="public/medium/entropy_loss.png" width="800" alt="entropy loss during learning"><br>
-      <u><em>Evolution of entropy — rises as the pool of seeds expands and the agent explores more diverse strategies</em></u>
+      <u><em>Evolution of entropy</em></u>
     </td>
   </tr>
 </table>
 
 <br />
+
+And here are the evaluation results :
 
 <table align="center">
   <tr>
@@ -462,7 +471,7 @@ Coming soon !
 </table>
 
 
-This time I tested **Middle schooler Billy** on easy and hard tests sets too. We can clearly see more precision on the easy mode and even a somewhat satisfying performance on hard levels. But it still needs some improvements for the hard level. And that's what we are doing next.
+I also tested **Middle schooler Billy :)** on easy and hard tests sets too. We can clearly see more precision on the easy mode and even a somewhat satisfying performance on hard levels. But it still needs some improvements for the hard level. And that's what we are doing next.
 
 **Test of the model trained for medium mode on easy mode worlds**
 
@@ -521,7 +530,7 @@ This time I tested **Middle schooler Billy** on easy and hard tests sets too. We
 </table>
 
 <br />
-<br /> -->
+<br />
 
 ### Hard mode training
 
@@ -676,7 +685,13 @@ Two distinct, compounding mechanisms might explain the decline:
 
 **2. Entropy collapse.** With `ent_coef=0.0` (the untouched default before this fix), nothing opposed the policy's action distribution becoming steadily more deterministic (lower standard deviation) as training progressed. `train/entropy_loss` — which SB3 logs as *negative* entropy, not entropy itself — rose steadily from about -2.8 to +3.7 over the run, meaning the actual entropy fell continuously from the very first step and never plateaued. A near-deterministic Gaussian policy makes PPO's probability ratios hypersensitive to small weight updates: a small shift in the mean action can swing the log-probability sharply when the standard deviation is already tiny. Combined to the now added LSTM architecture than not only updates the actions but also the hidden states, it could be a problem. `ent_coef=0.01` and a tighter `clip_range` (0.2 → 0.1) were added to counter this, along with switching `learning_rate` from a flat value to a `LinearSchedule` that decays over each stage's own training budget — the first several million steps of the run were working fine at the original flat rate, so the fix only tapers the rate down over time rather than starting low and slowing down learning that wasn't broken.
 
-After re-running the easy level training with these hyperparameters changes, the issue was fixed. The next steps are to train the medium level model and finally the hard level model to see if the `RecurrentPPO` configuration really helps overcoming what `PPO` alone couldn't.
+After re-running the easy level training with these hyperparameters changes, the issue was fixed. 
+
+I then went on to train on medium level seeds. Like mentionned earlier, I had planned a **200,000,000 timesteps** budget (what `PPO` needed to perform well). But to my surprise, after only **19,000,000 timesteps** (merely 10 % of the initially assigned budget), I noticed the agent already had a high success rate on the episodes. As the medium seeds pool was already completely covered, I decided to stop the training. I find it amazing ! "Just" adding the capacity to memorize past episodes and also extending the lidar's reach allowed the model to learn useful behavior in a really short time (compared to what could have been). 
+
+Things became even more interesting when I visualized its performance on hard level seeds. Those seeds need it to make turns around large walls, often **requiring it to turn its back on the learning signal for a non-negligeable amount of time**. And, where `PPO` agents and the `RecurrentPPO` easy level agent could only **charge headfirst into the crevice and stay stucked**, the new trained model **is able to turns its back on the signal for a good amount of time before being pulled back in**. And even after it starts being pulled back toward the signal, we can notice some kind of **"hesitation"** in its way of acting. 
+
+That's really encouraging. And so my hope is that given more time to experiment with hard level worlds, the model will be able to break its limitations. So the next step is the hard level training to see if the `RecurrentPPO` configuration really helps the agent overcome what `PPO` alone couldn't.
 
 
 ## Installation
@@ -684,8 +699,8 @@ After re-running the easy level training with these hyperparameters changes, the
 ```bash
 git clone https://github.com/Josh012006/NanoGoal-RL.git
 cd NanoGoal-RL
-python3 -m venv venv
-source venv/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
