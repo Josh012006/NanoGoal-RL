@@ -2,7 +2,7 @@
 import json
 import heapq
 import numpy as np
-import env
+from nanogoal_rl import env
 
 SEED_RANGE = range(10000)
 

@@ -18,7 +18,7 @@ import torch
 # for the full rationale. Must be set before any PPO model is loaded.
 torch.set_num_threads(1)
 
-import env
+from nanogoal_rl import env
 from sb3_contrib import RecurrentPPO
 from PIL import Image
 from pathlib import Path

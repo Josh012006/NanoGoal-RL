@@ -1,7 +1,7 @@
 # A file just to test and observe more freely with different seeds the environment and 
 # the effect of the actions.
 
-import env
+from nanogoal_rl import env
 import numpy as np
 
 import sys

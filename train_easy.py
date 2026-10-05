@@ -11,7 +11,7 @@ import torch
 # This must be set before any PPO model is created or loaded.
 torch.set_num_threads(1)
 
-import env
+from nanogoal_rl import env
 
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.vec_env import SubprocVecEnv
@@ -19,8 +19,8 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import CallbackList
 from stable_baselines3.common.utils import LinearSchedule
 from sb3_contrib import RecurrentPPO
-from checkpoint_callback import KeepLastNCheckpoints
-from seed_coverage_callback import SeedCoverageCallback
+from nanogoal_rl.checkpoint_callback import KeepLastNCheckpoints
+from nanogoal_rl.seed_coverage_callback import SeedCoverageCallback
 
 
 def make_env(worker_idx):

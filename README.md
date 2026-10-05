@@ -198,6 +198,7 @@ Even with all of this, v2's final model showed a real limitation on hard difficu
 - **Added an entropy bonus and tightened the trust region**: `ent_coef` raised from its 0.0 default to `0.01`, and `clip_range` lowered from 0.2 to `0.1`, after a longer easy training run showed entropy collapsing continuously from step 0 (nothing was opposing it) alongside a late-training blow-up in `policy_gradient_loss` and `value_loss` — a well-documented general PPO instability mode, independent of the LSTM-specific staleness issue above.
 - **Switched `learning_rate` from a flat per-stage value to a `LinearSchedule`** that decays over each stage's own training budget instead of staying constant for the full training steps of a stage — chosen over an unconditionally lower flat rate since the first several million steps of training were working fine at the original rate.
 - **Increased checkpoint retention**: `KeepLastTwoCheckpoints` renamed to `KeepLastNCheckpoints` with a configurable `keep_last_n` (now 10, up from a hardcoded 2), giving much more room to go back and recover a pre-regression checkpoint if a run degrades late, instead of being stuck with only the most recent two.
+- **Restructured the library code into a `nanogoal_rl` package**: `env.py`, `utils.py`, `perlin_noise.py`, `checkpoint_callback.py` and `seed_coverage_callback.py` moved into `nanogoal_rl/`, whose `__init__.py` exposes `NanoEnv` and registers the `Nano-v0` Gymnasium id under the new `nanogoal_rl.env:NanoEnv` entry point (the old `env:NanoEnv` string would have broken silently, since nothing calls `gym.make` day to day). The scripts at the repository root import from the package; all training, evaluation and plotting commands are unchanged.
 
 ## Training Hyperparameters
 
@@ -743,6 +744,28 @@ But then why doesn't he succeed everytime ? Is there still something more to imp
 This problem seems like a small one that can be easily solved by adding a penalty each time a wall is touched. That's the next thing I will test, starting back from the easy level training to ingrain it properly in the agent's prior behavior.
 
 
+## Project structure
+
+```
+nanogoal_rl/                         # library code (importable package)
+├── __init__.py                      # exposes NanoEnv, registers the "Nano-v0" Gymnasium id
+├── env.py                           # NanoEnv: the Gymnasium environment
+├── utils.py                         # grid / graph helpers (connectivity, clearance, navigability)
+├── perlin_noise.py                  # deterministic Perlin-noise topology generation
+├── checkpoint_callback.py           # KeepLastNCheckpoints (SB3 callback)
+└── seed_coverage_callback.py        # SeedCoverageCallback (SB3 callback)
+
+train_easy.py, train_medium.py, train_hard.py       # curriculum training
+eval.py, visual_eval.py, plots.py, saving_plots.py  # evaluation and plotting
+classify_seeds.py, precompute_cache.py, sanity_check_seeds.py  # seed classification and topology cache
+
+seeds.json, assets/                  # data files, read from the working directory
+```
+
+The scripts at the root import the library with e.g. `from nanogoal_rl import env` or `from nanogoal_rl.utils import main_related_component`. `import nanogoal_rl` is deliberately light (it does not pull in `torch`/Stable-Baselines3); the two callbacks are imported explicitly from their own modules.
+
+Everything is meant to be run **from the repository root**: `seeds.json`, `topology_cache`, `assets/` and the output folders (`models/`, `checkpoints/`, `logs/`, `results/`, `plots/`, `videos/`) are resolved relative to the working directory.
+
 ## Installation
 
 ```bash
@@ -754,6 +777,8 @@ pip install -r requirements.txt
 ```
 
 ## Usage
+
+All commands below are run from the repository root.
 
 Train the model for easy mode:
 ```bash

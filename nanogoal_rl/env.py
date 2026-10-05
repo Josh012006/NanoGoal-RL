@@ -7,10 +7,8 @@ import numpy as np
 import pygame
 import json
 from numba import njit
-from perlin_noise import fbm2d
-from utils import main_related_component, clearance_mask_jit, is_navigable_jit
-
-from gymnasium.envs.registration import register
+from .perlin_noise import fbm2d
+from .utils import main_related_component, clearance_mask_jit, is_navigable_jit
 
 Difficulty = Literal["easy", "medium", "hard"]
 
@@ -1030,10 +1028,3 @@ class NanoEnv(gym.Env):
         
         self._window = None
         self._clock = None
-
-
-
-register(
-    id="Nano-v0",
-    entry_point="env:NanoEnv",
-)

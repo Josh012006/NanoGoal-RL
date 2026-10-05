@@ -14,7 +14,7 @@ import torch
 torch.set_num_threads(1)
 
 import json
-import env
+from nanogoal_rl import env
 from sb3_contrib import RecurrentPPO
 import csv
 from pathlib import Path
