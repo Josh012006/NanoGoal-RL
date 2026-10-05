@@ -111,7 +111,10 @@ Key ideas explored:
 - Reward:
   - Negative changes in the velocity and orientation to prevent the agent from spining too much and encourage it to keep a more direct trajectory
   - Touching the white or red cells generated at random places and moving in the blood like liquid gives a penalty (greater penalty for white cells)
+  - Touching a wall (any step where the agent's move is blocked by a wall or forced to slide along it) gives a small penalty, so that hugging walls never pays, even when it still makes progress toward the goal
   - Positive reward when the agent reduces the distance between it and the goal
+  - Extra bonus (proportional to the gain) each time the agent gets closer to the goal than it has ever been during the episode
+  - Small penalty at every step to push the agent to keep moving, larger when it didn't get closer to the goal during that step
   - Positive reward when the goal is reached
   - Negative reward when truncated or the agent goes out of the blood vessel's boundaries (out of the window)
 - Episode termination:
@@ -182,9 +185,18 @@ NanoGoal-RL started, on the `v0` branch (https://github.com/Josh012006/NanoGoal-
 
 Even with all of this, v2's final model showed a real limitation on hard difficulty: across training, the success rate oscillated between roughly 0.5 and 0.6 with no clear upward trend, and the mean reward actually declined over the course of the run — training for longer didn't help, unlike what was observed for easy and medium. Looking at the agent's behavior, the pattern was consistent: hard seeds often require the agent to make a large turn that momentarily points it away from the target, and because the policy was purely feedforward (PPO with an MLP), it only ever reacts to the CURRENT observation — it has no way to remember that it is mid-detour. A few steps into turning away from a wall, the agent effectively "forgets" why it turned and drifts back toward the same wall it was trying to get around. **That's the problem this version of the project (v3) is trying to solve.**
 
+`v3` attacked that problem by giving the agent a memory. The training algorithm moved from `PPO` to `RecurrentPPO` (`sb3-contrib`, `MultiInputLstmPolicy`), which adds an LSTM to the policy and value networks so that a hidden state persists across the timesteps of an episode, and the lidar was widened (8 → 16 rays, range 20 → 60 grid cells) so walls are detected earlier. Training a recurrent policy stably took more than swapping the class, though: a first easy run saw its success rate peak around 9–10M timesteps and then decline. I attribute it to two things — the LSTM's hidden state being captured once per rollout and then reused, stale, across every PPO epoch (a problem for episodes of up to 800 steps cut into small minibatches), and the policy's entropy collapsing unopposed since `ent_coef` was 0 — and retuned accordingly: `batch_size` 2,000 (larger than an episode), fewer `n_epochs` (8/8/10), `ent_coef=0.01`, `clip_range=0.1` and a linearly decaying learning rate (the final values are in "Training Hyperparameters"). Re-running easy with them fixed the decline. v3 also slowed the seed pools' expansion (1,500/4,000/10,000 episodes for easy/medium/hard), kept a checkpoint every 100,000 timesteps (the last 10), and cut the environment's cost with numba JIT compilation of the lidar, the reset-time navigability check and the wall collisions. On the engineering side, the library code moved into an installable `nanogoal_rl` package.
+
+The results were a clear step forward. On medium, the agent already had a high success rate after only ~29M timesteps (out of a 200M budget) with the seed pool fully covered, so I stopped there. On hard, where `PPO` had plateaued around 0.5–0.6, the recurrent agent now makes large turns around walls, turning its back on the target for a long stretch before being pulled back in: memory (plus the longer lidar) was enough to escape the local reward trap. I stopped the hard run at 151.3M timesteps (out of 400M, ~26 days on the VM) once the success rate stopped rising. The best checkpoint reached about 69 % success on hard seeds, with no more out-of-bounds episodes, and the hard model also secures 95 %+ on easy and medium seeds.
+
+What is left is a different kind of failure. Every remaining failure on hard is a timeout: the agent finds a good route around the walls but stays too close to them and ends up stuck against one a short distance from the target (seed 1296 is a clear example). A quick measurement on 120 hard episodes with the final v3 hard model shows how lopsided it is: successful episodes spend about 5 steps in contact with a wall on average (~1 % of their steps), failed ones about 470 of ~790. And nothing in the reward discourages it — only collisions with blood cells were penalized, never walls. **That's the problem v4 is trying to solve.**
+
+`v4` adds the missing signal: a small penalty (`-0.2`) on every step where the agent's move is blocked by a wall or forces it to slide along one. The value comes from that same measurement: the best progress reward on a free step is about `+0.1`, so hugging a wall never pays; a successful episode loses only about 1 point to it (against `+100` for reaching the goal), while an episode stuck against a wall loses about 90; and an untrained agent, which touches walls 13–17 % of the time, isn't penalized so heavily that early learning gets drowned. Since a new reward changes what every stage learns, the whole curriculum is retrained, starting back from the easy level so that wall avoidance is ingrained in the prior behavior that medium and hard build on. I also made the seed pools grow faster so they reach their full size sooner (v3's hard run alone lasted ~26 days). If the diagnosis is right, the stuck-near-the-target failures should largely disappear and the success rate on hard should move well above v3's ~69 %.
+
 ### What changed in v4
 
-
+- **Added a wall-touch penalty**: the agent now receives `-0.2` on every step where its move overlaps a wall (blocked, or forced to slide along it). The value is the new `__penalty_wall_touch` attribute defined in `NanoEnv.__init__` next to the blood-cell penalties, and it is applied in `step()`; contact is reported by the JIT-compiled collision routine, whose resolved positions are unchanged.
+- **Sped up the seed pools' expansion**: medium now expands after 3,000 episodes (was 4,000) and hard after 6,000 (was 10,000); easy is unchanged at 1,500.
 
 ## Training Hyperparameters
 
@@ -209,8 +221,6 @@ The table below reflects the `RecurrentPPO` configuration set in `train_easy.py`
 | `gae_lambda` | 0.95 (default) | 0.95 (inherited) | 0.95 (inherited) |
 | `vf_coef` | 0.5 (default) | 0.5 (inherited) | 0.5 (inherited) |
 | `max_grad_norm` | 0.5 (default) | 0.5 (inherited) | 0.5 (inherited) |
-
-`n_steps`/`batch_size`/`n_epochs`/`ent_coef`/`clip_range`/`learning_rate` above reflect the retuned values described in "What changed in v3" — see "Final analysis" below for why they changed. The results and plots in the next section were produced before this retuning, with the original `n_steps=20_000 // n_envs`, `batch_size=200`, `n_epochs=10/15/20`, `ent_coef=0.0`, `clip_range=0.2` and flat `learning_rate` configuration; a re-run with the updated hyperparameters is the immediate next step.
 
 ## The results of the training (see `eval.py` for the evaluation code)
 
