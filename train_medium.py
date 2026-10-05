@@ -11,14 +11,15 @@ import torch
 # This must be set before any PPO model is created or loaded.
 torch.set_num_threads(1)
 
-import env
+from nanogoal_rl import env
 
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import CallbackList
-from stable_baselines3 import PPO
-from checkpoint_callback import KeepLastTwoCheckpoints
-from seed_coverage_callback import SeedCoverageCallback
+from stable_baselines3.common.utils import LinearSchedule
+from sb3_contrib import RecurrentPPO
+from nanogoal_rl.checkpoint_callback import KeepLastNCheckpoints
+from nanogoal_rl.seed_coverage_callback import SeedCoverageCallback
 
 
 def make_env(worker_idx):
@@ -36,7 +37,10 @@ def make_env(worker_idx):
 if __name__ == "__main__":
     # Automatically detect the number of available CPUs
     n_envs = min(os.cpu_count(), 8)
-    n_steps = 20_000 // n_envs  # increased to reduce backprop proportion vs rollout
+    n_steps = 12_000 // n_envs  # kept modest (vs. the old 20_000) to bound LSTM hidden-state
+    # staleness -- see train_easy.py for the full rationale. Larger than easy's
+    # 8_000 to give medium's more complex episodes a bit more diversity per
+    # update, while staying an order of magnitude below the old value.
     print(f"Running with {n_envs} parallel environments ({n_steps} steps each)")
 
     # SubprocVecEnv spawns one process per env, enabling true CPU parallelism
@@ -47,10 +51,11 @@ if __name__ == "__main__":
     checkpoint_path = f"./checkpoints/medium/{run_id}/"
     print(f"Checkpoint path: {checkpoint_path}")
 
-    checkpoint_callback = KeepLastTwoCheckpoints(
-        save_freq=1_000_000,
+    checkpoint_callback = KeepLastNCheckpoints(
+        save_freq=100_000,
         save_path=checkpoint_path,
-        name_prefix="ppo_medium"
+        name_prefix="ppo_medium",
+        keep_last_n=10
     )
 
     # Tracks real per-seed training coverage (how many individual seeds from
@@ -92,22 +97,46 @@ if __name__ == "__main__":
     if wandb_callback is not None:
         callbacks.append(wandb_callback)
 
-    # n_epochs=15 — more passes per rollout to extract more signal from complex episodes
-    model = PPO.load(
-        "models/ppo_nanogoal_easy",
+    # v3: RecurrentPPO/MultiInputLstmPolicy instead of plain PPO (see
+    # train_easy.py for the full rationale). IMPORTANT: this .load() requires
+    # models/ppo_lstm_easy to itself already be a RecurrentPPO checkpoint
+    # produced by the new train_easy.py -- a v2-era plain-PPO checkpoint has
+    # no LSTM weights and will fail to load here (architecture mismatch), so
+    # easy must be retrained from scratch once before medium can chain off it.
+    # n_epochs=8, batch_size=2_000: with n_steps*n_envs=12_000 transitions/rollout,
+    # this gives 6 minibatches/epoch, so 8*6=48 total gradient steps taken on a
+    # rollout before its LSTM hidden state is refreshed -- down from ~1_500 under
+    # the old n_steps=20_000/batch_size=200 (inherited)/n_epochs=15 config. See
+    # train_easy.py for why batch_size=2_000 rather than the full rollout.
+    # batch_size must be passed explicitly here (unlike ent_coef/clip_range,
+    # which are meant to carry over unchanged from ppo_lstm_easy, batch_size
+    # would otherwise silently stay at whatever was pickled into that checkpoint).
+    #
+    # learning_rate is a fresh LinearSchedule rather than a flat value or the one
+    # loaded from ppo_lstm_easy -- see train_easy.py for the general rationale
+    # (entropy collapse -> late-training instability at a flat LR). Starts where
+    # easy's schedule ended (5e-5) and decays further over medium's own (much
+    # longer) 200M-step budget.
+    model = RecurrentPPO.load(
+        "models/ppo_lstm_easy",
         env=vec_env,
-        custom_objects={"n_steps": n_steps, "learning_rate": 1e-4, "n_epochs": 15},
+        custom_objects={
+            "n_steps": n_steps,
+            "learning_rate": LinearSchedule(start=5e-5, end=1e-5, end_fraction=1.0),
+            "n_epochs": 8,
+            "batch_size": 2_000,
+        },
         device="cpu"  # avoid CPU/GPU non-determinism: never auto-select CUDA
     )
 
     model.learn(
-        total_timesteps=150_000_000,
+        total_timesteps=35_000_000,
         reset_num_timesteps=False,
         tb_log_name="medium",
         callback=CallbackList(callbacks)
     )
 
-    model.save("models/ppo_nanogoal_medium")
+    model.save("models/ppo_lstm_medium")
 
     if wandb_run is not None:
         wandb_run.finish()

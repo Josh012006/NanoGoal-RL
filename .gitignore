@@ -8,3 +8,5 @@ logs/train_*.FAILED
 logs/train_session.log
 logs/train.pid
 logs/wandb/
+*.egg-info/
+build/

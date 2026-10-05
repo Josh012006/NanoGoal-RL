@@ -8,14 +8,16 @@ timestep count could have wildly different seed diversity depending on
 episode length, and this makes that visible instead of assumed.
 
 Each parallel sub-environment keeps its own {seed: times_drawn} dict in
-memory (see env.py's _seed_counts / get_seed_visit_counts). This callback
-periodically pulls those dicts from every sub-environment via
-VecEnv.env_method() (works transparently across SubprocVecEnv's separate
-processes, no shared files, no race conditions) and merges them.
+memory (see env.py's _seed_counts / get_seed_visit_counts), plus a per-category
+{"episodes": n, "successes": m} dict (see env.py's _category_episode_stats /
+get_category_success_stats). This callback periodically pulls both from every
+sub-environment via VecEnv.env_method() (works transparently across
+SubprocVecEnv's separate processes, no shared files, no race conditions) and
+merges them.
 
 Logs, every `log_freq` timesteps, to TensorBoard/WandB:
-    seed_coverage/{easy,medium,hard}_unique_seen
     seed_coverage/{easy,medium,hard}_pct_unique_seen
+    seed_coverage/{easy,medium,hard}_success_rate
 
 At the end of training, saves one histogram per pool (as a PNG) showing the
 distribution of how many times each individual seed was visited over the
@@ -53,6 +55,19 @@ class SeedCoverageCallback(BaseCallback):
                     combined[category][seed] = combined[category].get(seed, 0) + count
         return combined
 
+    def _aggregate_success_stats(self):
+        """Sums every sub-env's {category: {"episodes": n, "successes": m}}
+        into one combined dict covering the whole training run so far --
+        the basis for the live per-category success rate over seeds already
+        seen during training."""
+        per_env_stats = self.training_env.env_method("get_category_success_stats")
+        combined = {c: {"episodes": 0, "successes": 0} for c in ("easy", "medium", "hard")}
+        for env_stats in per_env_stats:
+            for category, stats in env_stats.items():
+                combined[category]["episodes"]  += stats["episodes"]
+                combined[category]["successes"] += stats["successes"]
+        return combined
+
     def _on_step(self) -> bool:
         # Using num_timesteps // log_freq (a crossed-milestone check) instead
         # of a plain modulo so this triggers reliably every log_freq TOTAL
@@ -67,17 +82,27 @@ class SeedCoverageCallback(BaseCallback):
 
     def _log_coverage(self):
         combined = self._aggregate_counts()
+        success_stats = self._aggregate_success_stats()
+
         for category, pool_size in self._pool_sizes.items():
             n_unique = len(combined[category])
             pct = (n_unique / pool_size * 100) if pool_size > 0 else 0.0
-            self.logger.record(f"seed_coverage/{category}_unique_seen", n_unique)
             self.logger.record(f"seed_coverage/{category}_pct_unique_seen", pct)
+
+            episodes  = success_stats[category]["episodes"]
+            successes = success_stats[category]["successes"]
+            success_rate = (successes / episodes) if episodes > 0 else 0.0
+            self.logger.record(f"seed_coverage/{category}_success_rate", success_rate)
         # Explicit dump so these scalars are written to TensorBoard/WandB
         # right away, rather than waiting for PPO's own next internal flush.
         self.logger.dump(self.num_timesteps)
 
         if self.verbose:
-            parts = [f"{c}={len(combined[c])}/{self._pool_sizes[c]}" for c in ("easy", "medium", "hard")]
+            parts = [
+                f"{c}={len(combined[c])}/{self._pool_sizes[c]} "
+                f"(success {success_stats[c]['successes']}/{success_stats[c]['episodes']})"
+                for c in ("easy", "medium", "hard")
+            ]
             print(f"[SeedCoverageCallback] step {self.num_timesteps}: " + "  ".join(parts))
 
     def _on_training_end(self) -> None:

@@ -13,7 +13,7 @@ Usage: python sanity_check_seeds.py
 """
 import json
 import numpy as np
-import env
+from nanogoal_rl import env
 from classify_seeds import astar_path_and_deviation, EASY_MAX_DEG
 
 with open("seeds.json") as f:

@@ -8,7 +8,7 @@ positions).
 Usage: python diagnose_reset.py <seed>
 """
 import sys
-import env
+from nanogoal_rl import env
 import numpy as np
 
 seed = int(sys.argv[1]) if len(sys.argv) > 1 else 3271

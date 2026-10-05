@@ -9,8 +9,8 @@ import json
 import os
 import shelve
 import numpy as np
-import env as E
-from utils import main_related_component
+from nanogoal_rl import env as E
+from nanogoal_rl.utils import main_related_component
 
 
 def precompute(seed: int, environment: E.NanoEnv):

@@ -12,8 +12,8 @@ Usage: python diagnose_cache_vs_fresh.py <seed>
 """
 import sys
 import numpy as np
-import env
-from utils import main_related_component
+from nanogoal_rl import env
+from nanogoal_rl.utils import main_related_component
 
 seed = int(sys.argv[1]) if len(sys.argv) > 1 else 3271
 
