@@ -164,10 +164,10 @@ corresponding phase.
 
 ## Training Infrastructure
 
-- **Provider**: DigitalOcean (initial — discontinued after the GitHub Student Developer Pack partnership ended), Microsoft Azure (current, via Azure for Students)
+- **Provider**: DigitalOcean (initial — discontinued after the GitHub Student Developer Pack partnership ended)
 - **CPU**: 2 vCPUs
 - **RAM**: 4 GiB
-- **Storage**: 80 GiB (DigitalOcean droplet) / separate OS disk + 128 GiB data disk (Azure)
+- **Storage**: 80 GiB (DigitalOcean droplet)
 - **OS**: Ubuntu Server 24.04 LTS
 
 Despite the move to RecurrentPPO (which adds an LSTM to the policy and value networks), the infrastructure above hasn't changed — training still runs entirely on CPU, not GPU. This is deliberate rather than an oversight, for two reasons. First, reliable GPU availability isn't really within reach on a student budget/Azure for Students credits. Second, and more fundamentally, it likely wouldn't help much here even if it were: this project's bottleneck has consistently been CPU-bound environment simulation (Perlin noise topology generation, collision checks, lidar raycasting) and rollout collection across parallel workers, not the size of the neural network doing backprop. Pairing a GPU with fewer than 4 CPUs would mostly leave it idle waiting on single-threaded `SubprocVecEnv` workers to step the environment, rather than meaningfully speeding up training.
@@ -182,23 +182,9 @@ NanoGoal-RL started, on the `v0` branch (https://github.com/Josh012006/NanoGoal-
 
 Even with all of this, v2's final model showed a real limitation on hard difficulty: across training, the success rate oscillated between roughly 0.5 and 0.6 with no clear upward trend, and the mean reward actually declined over the course of the run — training for longer didn't help, unlike what was observed for easy and medium. Looking at the agent's behavior, the pattern was consistent: hard seeds often require the agent to make a large turn that momentarily points it away from the target, and because the policy was purely feedforward (PPO with an MLP), it only ever reacts to the CURRENT observation — it has no way to remember that it is mid-detour. A few steps into turning away from a wall, the agent effectively "forgets" why it turned and drifts back toward the same wall it was trying to get around. **That's the problem this version of the project (v3) is trying to solve.**
 
-### What changed in v3
+### What changed in v4
 
-- **Switched the training algorithm from PPO to RecurrentPPO**: `"MultiInputPolicy"` → `"MultiInputLstmPolicy"` (via `sb3-contrib`), adding an LSTM to the policy and value networks so the agent can carry a hidden state across timesteps within an episode. This is the direct attempt at fixing the memorylessness problem described above (see Hausknecht & Stone, 2015, DRQN, in Methods and References).
-- **Widened the agent's perception**: the lidar now casts 16 rays instead of 8, with its range extended from 20 to 60 grid cells, so walls can be detected earlier and from more directions.
-- **Slowed the curriculum's seed-pool expansion** (700/1,500/3,000 → 1,500/4,000/10,000 episodes for easy/medium/hard) to keep each pool size stable for longer given the added recurrent state.
-- **Increased the medium-difficulty training budget** from 150M to 200M timesteps.
-- **Training still runs entirely on CPU** (see Training Infrastructure above) — the switch to RecurrentPPO didn't come with a move to GPU.
-- **Renamed saved model files** from `ppo_nanogoal_*` to `ppo_lstm_*` to make the architecture explicit and avoid ever loading a v2-era (non-recurrent) checkpoint into RecurrentPPO by mistake — the two architectures are not compatible, so `easy` had to be retrained from scratch under v3 before `medium`/`hard` can chain off it again.
-- **`eval.py`/`visual_eval.py` now manage the LSTM's hidden state explicitly**: reset at the start of every episode, carried across steps within it — required by `RecurrentPPO`, meaningless for plain `PPO`.
-- **Refactored `saving_plots.py`'s CLI**: replaced positional numeric arguments (`0`/`1`/`2` for difficulty, a raw `0`/`1` flag) with named `--model`/`--seed` options mirroring `eval.py`/`visual_eval.py`'s own convention, removing an entire class of hard-to-read, easy-to-mis-order invocations.
-- **Reworked the seed-coverage metrics**: `SeedCoverageCallback` no longer logs the raw `unique_seen` seed count (kept only the normalized `pct_unique_seen`), and now also logs a live per-category `success_rate` — the fraction of episodes on already-seen easy/medium/hard seeds that ended in success — giving more direct visibility into curriculum progress than seed coverage alone.
-- **Pinned `numpy` to `2.4.1` instead of `2.4.0`**: `2.4.0` was yanked from PyPI shortly after release over a backward-compatibility bug (a typo in `SeedlessSequence` breaking wheels built against `numpy < 2.4.0` via the `random` Cython API), which pip surfaces as an install-time warning. `2.4.1` is the immediate patch release that fixes exactly that bug and nothing else.
-- **Retuned `n_steps`/`batch_size`/`n_epochs` per curriculum stage** to address an LSTM hidden-state staleness issue found by inspecting `sb3-contrib`'s source (see "Final analysis" below for the full mechanism): `batch_size` raised from 200 to 2,000 — roughly 2.5x the 800-step maximum episode length — so a whole episode fits inside a single minibatch far more often instead of getting sliced mid-sequence, and `n_epochs` brought down (10/15/20 → 8/8/10) to further limit how many gradient steps reuse a captured, increasingly-outdated hidden state before the next rollout refreshes it.
-- **Added an entropy bonus and tightened the trust region**: `ent_coef` raised from its 0.0 default to `0.01`, and `clip_range` lowered from 0.2 to `0.1`, after a longer easy training run showed entropy collapsing continuously from step 0 (nothing was opposing it) alongside a late-training blow-up in `policy_gradient_loss` and `value_loss` — a well-documented general PPO instability mode, independent of the LSTM-specific staleness issue above.
-- **Switched `learning_rate` from a flat per-stage value to a `LinearSchedule`** that decays over each stage's own training budget instead of staying constant for the full training steps of a stage — chosen over an unconditionally lower flat rate since the first several million steps of training were working fine at the original rate.
-- **Increased checkpoint retention**: `KeepLastTwoCheckpoints` renamed to `KeepLastNCheckpoints` with a configurable `keep_last_n` (now 10, up from a hardcoded 2), giving much more room to go back and recover a pre-regression checkpoint if a run degrades late, instead of being stuck with only the most recent two.
-- **Restructured the library code into a `nanogoal_rl` package**: `env.py`, `utils.py`, `perlin_noise.py`, `checkpoint_callback.py` and `seed_coverage_callback.py` moved into `nanogoal_rl/`, whose `__init__.py` exposes `NanoEnv` and registers the `Nano-v0` Gymnasium id under the new `nanogoal_rl.env:NanoEnv` entry point (the old `env:NanoEnv` string would have broken silently, since nothing calls `gym.make` day to day). The scripts at the repository root import from the package; all training, evaluation and plotting commands are unchanged. The package is also installable with `pip install -e .` (new `pyproject.toml`).
+
 
 ## Training Hyperparameters
 
@@ -228,7 +214,8 @@ The table below reflects the `RecurrentPPO` configuration set in `train_easy.py`
 
 ## The results of the training (see `eval.py` for the evaluation code)
 
-When all the changes were done, I started training the model. After each training I plotted some interesting relationships between the results parameters.
+Training in progress.
+<!-- When all the changes were done, I started training the model. After each training I plotted some interesting relationships between the results parameters.
 
 ### Easy mode training
 For the easy mode, the model was trained for **~12,000,000 timesteps** (~2.2 days). I preempted the training because all the seeds were covered and the performance was already satisfying. As expected, the training time increased due to the hidden states also being updated. The reassuring part is that the performance of the model is as good it was previously with PPO. Visually, its behavior is also consistent. 
@@ -689,59 +676,11 @@ We can see a clear imporvement in the performance over hard level seeds. No more
 
 <br />
 <br />
+ -->
 
 ## Final analysis
 
-The results above look solid on paper, but letting the easy run continue past the checkpoint reported in "Easy mode training" surfaced a pattern worth documenting in detail, since it directly shaped the retuned hyperparameters listed in "Training Hyperparameters" and in "What changed in v3" above.
-
-On that longer run, `rollout/success_rate` climbs steadily to ~0.95-0.97 by around step 9-10M, then **declines** over the following steps, ending noticeably lower. That decline isn't just noise: `train/policy_gradient_loss` grows roughly 20x over the same window, and `train/value_loss` bottoms out around the same point before rising again. If the very last checkpoint of a long run is promoted as the final model without checking for this, it can end up meaningfully worse than an earlier one — the same lesson v2 already learned the hard way on hard difficulty (see "More on the training process" above), now showing up on easy too, at a much shorter timescale. This is why checkpoint retention was increased from 2 to 10 (see "What changed in v3").
-
-Two distinct, compounding mechanisms might explain the decline:
-
-**1. LSTM hidden-state staleness.** `RecurrentPPO` captures the LSTM's hidden state once per minibatch, at rollout-collection time, with the weights as they were at that moment — then reuses that exact captured state as the BPTT starting point across every PPO epoch on that minibatch, even as the weights keep changing epoch to epoch. Episodes here run up to 800 steps (`min(3 + 2*distance, 40s) / 0.05s`), and the batch size used to be only 200 — far smaller than that — so a long episode would almost always get sliced across multiple minibatches. At every one of those artificial cuts, a stale hidden state (produced by older weights) gets forced back in as the "starting point" mid-episode, computed onward with already-updated weights. `n_steps`, `batch_size` and `n_epochs` were retuned specifically to address this: `batch_size` was raised to 2,000 — roughly 2.5x the 800-step maximum episode length — so a whole episode now fits inside a single minibatch far more often, and `n_epochs` was brought down (10/15/20 → 8/8/10) to further reduce how many gradient steps get taken on a rollout before its hidden states are refreshed by the next collection pass.
-
-**2. Entropy collapse.** With `ent_coef=0.0` (the untouched default before this fix), nothing opposed the policy's action distribution becoming steadily more deterministic (lower standard deviation) as training progressed. `train/entropy_loss` — which SB3 logs as *negative* entropy, not entropy itself — rose steadily from about -2.8 to +3.7 over the run, meaning the actual entropy fell continuously from the very first step and never plateaued. A near-deterministic Gaussian policy makes PPO's probability ratios hypersensitive to small weight updates: a small shift in the mean action can swing the log-probability sharply when the standard deviation is already tiny. Combined to the now added LSTM architecture than not only updates the actions but also the hidden states, it could be a problem. `ent_coef=0.01` and a tighter `clip_range` (0.2 → 0.1) were added to counter this, along with switching `learning_rate` from a flat value to a `LinearSchedule` that decays over each stage's own training budget — the first several million steps of the run were working fine at the original flat rate, so the fix only tapers the rate down over time rather than starting low and slowing down learning that wasn't broken.
-
-After re-running the easy level training with these hyperparameters changes, the issue was fixed. 
-
-I then went on to train on medium level seeds. Like mentionned earlier, I had planned a **200,000,000 timesteps** budget (what `PPO` needed to perform well). But to my surprise, after only **29,000,000 timesteps** (merely 10 % of the initially assigned budget), I noticed the agent already had a high success rate on the episodes. As the medium seeds pool was already completely covered, I decided to stop the training. I find it amazing ! "Just" adding the capacity to memorize past episodes and also extending the lidar's reach allowed the model to learn useful behavior in a really short time (compared to what could have been). 
-
-Things became even more interesting when I visualized its performance on hard level seeds. Those seeds need it to make turns around large walls, often **requiring it to turn its back on the learning signal for a non-negligeable amount of time**. And, where `PPO` agents and the `RecurrentPPO` easy level agent could only **charge headfirst into the crevice and stay stucked**, the new trained model **is able to turns its back on the signal for a good amount of time before being pulled back in**. And even after it starts being pulled back toward the signal, we can notice some kind of **"hesitation"** in its way of acting. 
-
-That's really encouraging. And so my hope was that given more time to experiment with hard level worlds, the model will be able to break its limitations. So I lauched the hard level training to see if the `RecurrentPPO` configuration really helps the agent overcome what `PPO` alone couldn't.
-
-And it really made an improvement. The agent is now able to realize huge turns around walls without getting stuck because of the local reward signal.
-
-<table align="center">
-  <tr>
-    <td align="center">
-      <img src="public/hard/real_improv_hard_1.gif" alt="Demo">
-      <br>
-      <em>Seed 333</em>
-    </td>
-    <td align="center">
-      <img src="public/hard/real_improv_hard_2.gif" alt="Demo">
-      <br>
-      <em>Seed 777</em>
-    </td>
-  </tr>
-</table>
-
-This shows that adding a memory dimension to the observation is enough to allow the agent to escape the loacl raward trap. That's fascinating in itself. 
-
-But then why doesn't he succeed everytime ? Is there still something more to improve regarding the algorithm itself ? I don't think so. What I notice while visually looking at the way the agent acts is that it stays too close to walls. While it isn't fatal in itself it can be dangerous because some walls' shape can cause the agent to get stuck. It's probably the cause of the agent's failures. And it is observable in the fact that all the evaluation failures are timeouts. We can also see that visually on the seed 1296, where our agent displays a great performance to go around a really long wall but still gets stucks uselessly not far from the target : 
-
-<table align="center">
-  <tr>
-    <td align="center">
-      <img src="public/hard/demo_hard_hard.gif" alt="Demo">
-      <br>
-      <em>Seed 1296</em>
-    </td>
-  </tr>
-</table>
-
-This problem seems like a small one that can be easily solved by adding a penalty each time a wall is touched. That's the next thing I will test, starting back from the easy level training to ingrain it properly in the agent's prior behavior.
+Coming soon !
 
 
 ## Project structure
@@ -872,8 +811,7 @@ SDL_VIDEODRIVER=dummy python visual_eval.py --model easy --seed_value 3271
 - More realistic and complex environments: cell-cell collision management, real CFD(computational fluids dynamics), etc.
 - Be more strict on the goal achievement. For example, instead of just trying to attain the target, try to have a low velocity at arrival and a certain orientation
 - Extend to 3D control
-- Compare with other RL algorithms like HER or DDPG
-- Sim-to-real transfer experiments
+- Compare with other RL algorithms
 - Multi-agent goal conditioned control
 
 ## Author
