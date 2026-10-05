@@ -115,14 +115,18 @@ def _manage_wall_collision_jit(x0, y0, x1, y1, r, size, topology):
     random agent moves; ~3x faster in isolation, called once per moving
     entity (agent + every active red/white cell) every single step, so this
     was one of the largest remaining per-step costs after the lidar and
-    is_navigable fixes (profiling showed it at ~50%+ of step() time)."""
+    is_navigable fixes (profiling showed it at ~50%+ of step() time).
+
+    Returns (x, y, touched): the resolved position (unchanged logic) and
+    whether the intended move overlapped a wall, i.e. it was blocked or had to
+    slide along it. `touched` is False only when the direct move was free."""
     if not _touch_wall_jit(x1, y1, r, size, topology):
-        return x1, y1
+        return x1, y1, False
     if not _touch_wall_jit(x1, y0, r, size, topology):
-        return x1, y0
+        return x1, y0, True
     if not _touch_wall_jit(x0, y1, r, size, topology):
-        return x0, y1
-    return x0, y0
+        return x0, y1, True
+    return x0, y0, True
 
 
 class NanoEnv(gym.Env):
@@ -243,8 +247,8 @@ class NanoEnv(gym.Env):
         self._ep = 0               # episodes count
         self._pool_init = 4        # initial pool's size
         self._expand_every = 1500 if difficulty == "easy" else \
-                            4000  if difficulty == "medium" else \
-                            10000  # expansion frequency
+                            3000  if difficulty == "medium" else \
+                            6000  # expansion frequency
 
         # Discrete representation as a grid
         self._size = 125  # grid's size
@@ -297,6 +301,9 @@ class NanoEnv(gym.Env):
         # Penalty collision
         self.__penalty_red_cell = -3.0
         self.__penalty_white_cell = -7.0
+        
+        # Penalty for collision with a wall
+        self.__penalty_wall_touch = -0.2
 
         # Time management
         self._time = 0
@@ -735,19 +742,27 @@ class NanoEnv(gym.Env):
         return observation, info
     
 
-    def _manage_wall_collision(self, old_location, new_location, radius):
+    def _resolve_wall_collision(self, old_location, new_location, radius):
         """Logic to verify wall collision with a cell or the agent.
         Args:
             old_location: the previous location of the entity
             new_location: the location it wants to attain after the step
-            radius: the entity's radius 
+            radius: the entity's radius
+        Returns:
+            tuple: (resolved location, touched) where `touched` is True when the
+            intended move overlapped a wall (blocked, or slid along it).
         """
-        nx, ny = _manage_wall_collision_jit(
+        nx, ny, touched = _manage_wall_collision_jit(
             float(old_location[0]), float(old_location[1]),
             float(new_location[0]), float(new_location[1]),
             float(radius), self._size, self._vessel_topology
         )
-        return np.array([nx, ny], dtype=np.float32)
+        return np.array([nx, ny], dtype=np.float32), touched
+
+    def _manage_wall_collision(self, old_location, new_location, radius):
+        """Same as _resolve_wall_collision but returns only the resolved
+        location (used for the blood cells, which don't care about contact)."""
+        return self._resolve_wall_collision(old_location, new_location, radius)[0]
     
     
 
@@ -791,7 +806,7 @@ class NanoEnv(gym.Env):
         )
         old_agent_location = self._agent_location.copy()
         new_agent_location = self._agent_location + (v_agent + 0.5 * self.__v_blood) * self.__timestep
-        self._agent_location = self._manage_wall_collision(
+        self._agent_location, touched_wall = self._resolve_wall_collision(
             self._agent_location, new_agent_location, self._agent_radius
         )
         self._agent_trail.append(self._agent_location.copy())
@@ -843,6 +858,12 @@ class NanoEnv(gym.Env):
 
         # 3e. Idleness penalty — small constant cost to push the agent to keep moving
         reward += -0.03 if p <= 0 else -0.01
+
+        # 3f. Wall-contact penalty — charged on every step where the agent's
+        # intended move overlapped a wall (blocked or forced to slide along it),
+        # so hugging walls costs reward even while still making progress.
+        if touched_wall:
+            reward += self.__penalty_wall_touch
 
 
         # ── 4. TERMINATION CONDITIONS ─────────────────────────────────────────────
