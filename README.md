@@ -212,7 +212,7 @@ The table below reflects the `RecurrentPPO` configuration set in `train_easy.py`
 | `learning_rate` | `LinearSchedule(3e-4 → 5e-5)` | `LinearSchedule(5e-5 → 1e-5)` | `LinearSchedule(1e-5 → 2e-6)` |
 | `ent_coef` | 0.01 | 0.01 (inherited) | 0.01 (inherited) |
 | `clip_range` | 0.1 | 0.1 (inherited) | 0.1 (inherited) |
-| `total_timesteps` | 12,000,000 | 25,000,000 | 400,000,000 |
+| `total_timesteps` | 12,000,000 | 35,000,000 | 400,000,000 |
 | `device` | `cpu` | `cpu` | `cpu` |
 | `lstm_hidden_size` | 256 (default) | 256 (inherited) | 256 (inherited) |
 | `n_lstm_layers` | 1 (default) | 1 (inherited) | 1 (inherited) |
@@ -245,7 +245,7 @@ What we can also notice that with the presence of the entropy bonus, the entropy
   <tr>
     <td align="center">
       <img src="public/easy/pool_increase.png" width="800" alt="pool increase"><br>
-      <u><em>The easy seeds pool's size evolution during training (displayed in %)</em></u>
+      <u><em>The easy level seeds pool's size evolution during training (displayed in %)</em></u>
     </td>
   </tr>
   <tr><td></td></tr>
@@ -381,7 +381,7 @@ I also tested on medium and hard level seeds to make sure the presence of memory
 
 ### Medium mode training
 
-Next, I trained the model on medium level seeds, starting from the easy level model as a baseline. Medium worlds require the agent to navigate around 1 to 2 significant obstacles — it must learn when to turn and how to recover its heading after a detour. I previously planned to train it for another **200,000,000 timesteps**, but after **19,000,000 timesteps** (~3.8 days) the agent had already achieved a hight success rate and had seen all the seeds in the pool. So I stopped the training. Here are the training metrics.
+Next, I trained the model on medium level seeds, starting from the easy level model as a baseline. Medium worlds require the agent to navigate around 1 to 2 significant obstacles — it must learn when to turn and how to recover its heading after a detour. I originally planned to train it for another **200,000,000 timesteps**, but after **29,000,000 timesteps** (~3.8 days) the agent had already achieved a hight success rate and had seen all the seeds in the pool. So I stopped the training. Here are the training metrics.
 
 <table align="center">
   <tr>
@@ -390,25 +390,25 @@ Next, I trained the model on medium level seeds, starting from the easy level mo
       <u><em>Evolution of success rate during learning episodes</em></u>
     </td>
   </tr>
-  <tr><td></td></tr>
+  <tr><td></td><td></td></tr>
   <tr>
     <td align="center">
       <img src="public/medium/pool_increase_easy.png" width="800" alt="pool increase"><br>
-      <u><em>The easy seeds pool's size evolution during training (displayed in %)</em></u>
+      <u><em>The easy level seeds pool's size evolution during training (displayed in %)</em></u>
     </td>
     <td align="center">
       <img src="public/medium/pool_increase_medium.png" width="800" alt="pool increase"><br>
-      <u><em>The medium seeds pool's size evolution during training (displayed in %)</em></u>
+      <u><em>The medium level seeds pool's size evolution during training (displayed in %)</em></u>
     </td>
   </tr>
-  <tr><td></td></tr>
+  <tr><td></td><td></td></tr>
   <tr>
     <td align="center" colspan="2">
       <img src="public/medium/explained_variance.png" width="800" alt="explained variance during learning"><br>
       <u><em>Evolution of explained variance during learning</em></u>
     </td>
   </tr>
-  <tr><td></td></tr>
+  <tr><td></td><td></td></tr>
   <tr>
     <td align="center" colspan="2">
       <img src="public/medium/entropy_loss.png" width="800" alt="entropy loss during learning"><br>
@@ -534,36 +534,49 @@ I also tested **Middle schooler Billy :)** on easy and hard tests sets too. We c
 
 ### Hard mode training
 
-Coming soon !
-<!-- For the last step, I added **400,000,000 timesteps** (~12 days). Hard worlds require the agent to combine everything it has learned — navigating around multiple significant obstacles (> 270° total angular deviation) while maintaining directional progress toward a distant goal.
-
-<p align="center">
-  <img src="public/hard/reward_mean.png" width="800" alt="the reward mean during learning"><br>
-  <u><em>Evolution of reward during learning episodes</em></u>
-</p>
+At last, I launched the hard level training. Like already said in previous versions, the difficulty of hard level seeds is that they require the agent to be able to "give up" on the reward signal momentarily and go around large walls to finally be able to attain its goal. `PPO` wasn't able to do that. And we are now trying to see if `RecurrentPPO` can help. I planned to add **400,000,000 timesteps**. But I had to stop after **151,300,000 timesteps** (lasted ~26 days on my virtual machine). I stopped because even though there was clear learning happening, there wasn't any significant increase on the success rate for hard level seeds at some point. But I discuss below in the "Final analysis" section things that I noticed we can improve to have an even better performance. For now here are the training results : 
 
 <table align="center">
   <tr>
-    <td align="center">
+    <td align="center" colspan="3">
       <img src="public/hard/success_rate.png" width="800" alt="success rate during learning"><br>
       <u><em>Evolution of success rate during learning episodes</em></u>
     </td>
   </tr>
+  <tr><td></td><td></td><td></td></tr>
   <tr>
     <td align="center">
-      <img src="public/hard/explained_variance.png" width="800" alt="explained variance during learning"><br>
-      <u><em>Evolution of explained variance during learning — stays consistently above 0.92, indicating the value function learned well</em></u>
+      <img src="public/hard/pool_increase_easy.png" width="800" alt="pool increase"><br>
+      <u><em>The easy level seeds pool's size evolution during training (displayed in %)</em></u>
+    </td>
+    <td align="center">
+      <img src="public/hard/pool_increase_medium.png" width="800" alt="pool increase"><br>
+      <u><em>The medium level seeds pool's size evolution during training (displayed in %)</em></u>
+    </td>
+    <td align="center">
+      <img src="public/hard/pool_increase_hard.png" width="800" alt="pool increase"><br>
+      <u><em>The hard level seeds pool's size evolution during training (displayed in %)</em></u>
     </td>
   </tr>
+  <tr><td></td><td></td><td></td></tr>
   <tr>
-    <td align="center">
+    <td align="center" colspan="3">
+      <img src="public/hard/explained_variance.png" width="800" alt="explained variance during learning"><br>
+      <u><em>Evolution of explained variance during learning</em></u>
+    </td>
+  </tr>
+  <tr><td></td><td></td><td></td></tr>
+  <tr>
+    <td align="center" colspan="3">
       <img src="public/hard/entropy_loss.png" width="800" alt="entropy loss during learning"><br>
-      <u><em>Evolution of entropy — rises as the pool of seeds expands and the agent explores more diverse strategies</em></u>
+      <u><em>Evolution of entropy</em></u>
     </td>
   </tr>
 </table>
 
 <br />
+
+And here are the evaluation results :
 
 <table align="center">
   <tr>
@@ -607,7 +620,7 @@ Coming soon !
   <tr>
     <td align="center">
       <img src="plots/hard/terminated-truncated.png" width="600"
-           alt="Termination and truncation ratio">
+           alt="Termination to truncation ratio">
       <br>
       <u><em>Termination to truncation ratio per episode</em></u>
     </td>
@@ -615,7 +628,7 @@ Coming soon !
 </table>
 
 
-Lastly, I tested **High schooler Billy** on easy and medium tests sets too to make sure he didn't forget all he previously learned:
+We can see a clear imporvement in the performance over hard level seeds. No more out of bounds and mostly timeouts. I also tested **High schooler Billy** on easy and medium level seeds. And not only did he keep his good behaviors, he also improved significantly over the two, securing 95+ % success rate on the two levels :
 
 **Test of the model trained for hard mode on easy mode worlds**
 
@@ -671,7 +684,10 @@ Lastly, I tested **High schooler Billy** on easy and medium tests sets too to ma
       <u><em>Success rate on medium test seeds</em></u>
     </td>
   </tr>
-</table> -->
+</table>
+
+<br />
+<br />
 
 ## Final analysis
 
@@ -687,11 +703,44 @@ Two distinct, compounding mechanisms might explain the decline:
 
 After re-running the easy level training with these hyperparameters changes, the issue was fixed. 
 
-I then went on to train on medium level seeds. Like mentionned earlier, I had planned a **200,000,000 timesteps** budget (what `PPO` needed to perform well). But to my surprise, after only **19,000,000 timesteps** (merely 10 % of the initially assigned budget), I noticed the agent already had a high success rate on the episodes. As the medium seeds pool was already completely covered, I decided to stop the training. I find it amazing ! "Just" adding the capacity to memorize past episodes and also extending the lidar's reach allowed the model to learn useful behavior in a really short time (compared to what could have been). 
+I then went on to train on medium level seeds. Like mentionned earlier, I had planned a **200,000,000 timesteps** budget (what `PPO` needed to perform well). But to my surprise, after only **29,000,000 timesteps** (merely 10 % of the initially assigned budget), I noticed the agent already had a high success rate on the episodes. As the medium seeds pool was already completely covered, I decided to stop the training. I find it amazing ! "Just" adding the capacity to memorize past episodes and also extending the lidar's reach allowed the model to learn useful behavior in a really short time (compared to what could have been). 
 
 Things became even more interesting when I visualized its performance on hard level seeds. Those seeds need it to make turns around large walls, often **requiring it to turn its back on the learning signal for a non-negligeable amount of time**. And, where `PPO` agents and the `RecurrentPPO` easy level agent could only **charge headfirst into the crevice and stay stucked**, the new trained model **is able to turns its back on the signal for a good amount of time before being pulled back in**. And even after it starts being pulled back toward the signal, we can notice some kind of **"hesitation"** in its way of acting. 
 
-That's really encouraging. And so my hope is that given more time to experiment with hard level worlds, the model will be able to break its limitations. So the next step is the hard level training to see if the `RecurrentPPO` configuration really helps the agent overcome what `PPO` alone couldn't.
+That's really encouraging. And so my hope was that given more time to experiment with hard level worlds, the model will be able to break its limitations. So I lauched the hard level training to see if the `RecurrentPPO` configuration really helps the agent overcome what `PPO` alone couldn't.
+
+And it really made an improvement. The agent is now able to realize huge turns around walls without getting stuck because of the local reward signal.
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="public/hard/real_improv_hard_1.gif" alt="Demo">
+      <br>
+      <em>Seed 333</em>
+    </td>
+    <td align="center">
+      <img src="public/hard/real_improv_hard_2.gif" alt="Demo">
+      <br>
+      <em>Seed 777</em>
+    </td>
+  </tr>
+</table>
+
+This shows that adding a memory dimension to the observation is enough to allow the agent to escape the loacl raward trap. That's fascinating in itself. 
+
+But then why doesn't he succeed everytime ? Is there still something more to improve regarding the algorithm itself ? I don't think so. What I notice while visually looking at the way the agent acts is that it stays too close to walls. While it isn't fatal in itself it can be dangerous because some walls' shape can cause the agent to get stuck. It's probably the cause of the agent's failures. And it is observable in the fact that all the evaluation failures are timeouts. We can also see that visually on the seed 1296, where our agent displays a great performance to go around a really long wall but still gets stucks uselessly not far from the target : 
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="public/hard/demo_hard_hard.gif" alt="Demo">
+      <br>
+      <em>Seed 1296</em>
+    </td>
+  </tr>
+</table>
+
+This problem seems like a small one that can be easily solved by adding a penalty each time a wall is touched. That's the next thing I will test, starting back from the easy level training to ingrain it properly in the agent's prior behavior.
 
 
 ## Installation

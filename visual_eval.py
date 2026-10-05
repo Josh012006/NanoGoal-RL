@@ -92,14 +92,14 @@ episode_over = False
 total_reward = 0
 
 def save_gif():
-    # Factored out so it runs from the `finally` block too: an interrupted
-    # episode (Ctrl+C, closing the window) still gets saved with whatever
-    # frames were captured up to that point, instead of losing the run.
     if len(frames) < 2:
         print("Not enough frames captured, skipping GIF save.")
         return
     duration_ms = int(1000 / args.fps)
-    imgs = [Image.fromarray(f) for f in frames]
+    imgs = [
+        Image.fromarray(f).quantize(colors=256, method=Image.Quantize.FASTOCTREE)
+        for f in frames
+    ]
     imgs[0].save(
         output_path,
         save_all=True,
