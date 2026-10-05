@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nanogoal-rl"
+version = "3.0.0"
+description = "Goal-conditioned RL for a simulated 2D nanorobot (Billy) navigating a vessel-like environment with RecurrentPPO"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+
+# Only what the `nanogoal_rl` package itself needs to import the environment.
+# Lower bounds only: exact, reproducible versions stay pinned in requirements.txt.
+dependencies = [
+    "gymnasium>=1.0",
+    "numpy>=2.0",
+    "numba>=0.60",
+    "pygame>=2.5",
+]
+
+[project.optional-dependencies]
+# For training and the callbacks (nanogoal_rl.checkpoint_callback,
+# nanogoal_rl.seed_coverage_callback): pip install -e ".[train]"
+train = [
+    "stable-baselines3>=2.7",
+    "sb3-contrib>=2.7",
+    "matplotlib>=3.8",
+]
+
+# Explicit on purpose: the repository root also holds scripts and data folders
+# (models/, logs/, plots/, results/, ...), which setuptools' auto-discovery
+# would otherwise refuse ("multiple top-level packages") or try to package.
+[tool.setuptools]
+packages = ["nanogoal_rl"]

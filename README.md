@@ -198,7 +198,7 @@ Even with all of this, v2's final model showed a real limitation on hard difficu
 - **Added an entropy bonus and tightened the trust region**: `ent_coef` raised from its 0.0 default to `0.01`, and `clip_range` lowered from 0.2 to `0.1`, after a longer easy training run showed entropy collapsing continuously from step 0 (nothing was opposing it) alongside a late-training blow-up in `policy_gradient_loss` and `value_loss` — a well-documented general PPO instability mode, independent of the LSTM-specific staleness issue above.
 - **Switched `learning_rate` from a flat per-stage value to a `LinearSchedule`** that decays over each stage's own training budget instead of staying constant for the full training steps of a stage — chosen over an unconditionally lower flat rate since the first several million steps of training were working fine at the original rate.
 - **Increased checkpoint retention**: `KeepLastTwoCheckpoints` renamed to `KeepLastNCheckpoints` with a configurable `keep_last_n` (now 10, up from a hardcoded 2), giving much more room to go back and recover a pre-regression checkpoint if a run degrades late, instead of being stuck with only the most recent two.
-- **Restructured the library code into a `nanogoal_rl` package**: `env.py`, `utils.py`, `perlin_noise.py`, `checkpoint_callback.py` and `seed_coverage_callback.py` moved into `nanogoal_rl/`, whose `__init__.py` exposes `NanoEnv` and registers the `Nano-v0` Gymnasium id under the new `nanogoal_rl.env:NanoEnv` entry point (the old `env:NanoEnv` string would have broken silently, since nothing calls `gym.make` day to day). The scripts at the repository root import from the package; all training, evaluation and plotting commands are unchanged.
+- **Restructured the library code into a `nanogoal_rl` package**: `env.py`, `utils.py`, `perlin_noise.py`, `checkpoint_callback.py` and `seed_coverage_callback.py` moved into `nanogoal_rl/`, whose `__init__.py` exposes `NanoEnv` and registers the `Nano-v0` Gymnasium id under the new `nanogoal_rl.env:NanoEnv` entry point (the old `env:NanoEnv` string would have broken silently, since nothing calls `gym.make` day to day). The scripts at the repository root import from the package; all training, evaluation and plotting commands are unchanged. The package is also installable with `pip install -e .` (new `pyproject.toml`).
 
 ## Training Hyperparameters
 
@@ -774,7 +774,10 @@ cd NanoGoal-RL
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+pip install -e .
 ```
+
+`pip install -e .` installs the `nanogoal_rl` package in editable mode (see `pyproject.toml`), so `import nanogoal_rl` works from any folder and code changes are picked up without reinstalling. Exact, reproducible versions stay pinned in `requirements.txt`; `pyproject.toml` only declares lower bounds (`pip install -e ".[train]"` also pulls Stable-Baselines3, SB3-Contrib and Matplotlib). Note that data files (`seeds.json`, `topology_cache`, `assets/`) are still read from the working directory: outside the repository root, `NanoEnv` builds without error but with an empty seed pool, so keep running the scripts from the repository root.
 
 ## Usage
 
