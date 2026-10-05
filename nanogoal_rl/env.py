@@ -246,9 +246,9 @@ class NanoEnv(gym.Env):
         # Learn by using increasing pools of seeds
         self._ep = 0               # episodes count
         self._pool_init = 4        # initial pool's size
-        self._expand_every = 1500 if difficulty == "easy" else \
-                            3000  if difficulty == "medium" else \
-                            6000  # expansion frequency
+        self._expand_every = 500 if difficulty == "easy" else \
+                            1000  if difficulty == "medium" else \
+                            2000  # expansion frequency
 
         # Discrete representation as a grid
         self._size = 125  # grid's size
