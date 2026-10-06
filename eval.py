@@ -24,7 +24,7 @@ DIFFICULTIES = ["easy", "medium", "hard"]
 SEED_MODES   = ["easy", "medium", "hard", "mix"]
 
 parser = argparse.ArgumentParser(
-    description="Evaluate a trained PPO model over 100 test episodes and save results as a CSV."
+    description="Evaluate a trained RecurrentPPO model over 500 test episodes and save results as a CSV."
 )
 parser.add_argument(
     "--model", required=True, choices=DIFFICULTIES,
@@ -93,7 +93,10 @@ folder = model_difficulty
 Path("results/" + folder).mkdir(parents=True, exist_ok=True)
 with open("results/" + folder + "/ppo_eval_" + seed_mode + ".csv", "w", newline="") as f:
     writer = csv.writer(f)
-    writer.writerow(["episode", "seed", "return", "length", "success", "terminated", "truncated", "init_dist_goal", "best_dist_goal", "final_dist_goal"])
+    # Per-episode (success, wall_touch_steps, length), kept for the summary printed at the end
+    wall_stats = []
+
+    writer.writerow(["episode", "seed", "return", "length", "success", "terminated", "truncated", "init_dist_goal", "best_dist_goal", "final_dist_goal", "wall_touch_steps"])
 
     for episode in range(500):
         seed = test_set[episode]
@@ -129,6 +132,25 @@ with open("results/" + folder + "/ppo_eval_" + seed_mode + ".csv", "w", newline=
         success = info["is_success"]
         best_dist = info["best_dist"]
         final_dist = info["distance"]
+        wall_touch_steps = info["wall_touch_steps"]
+        wall_stats.append((bool(success), wall_touch_steps, step))
 
         # Save the results
-        writer.writerow([episode, seed, total_reward, step, success, terminated, truncated, init_dist, best_dist, final_dist])
+        writer.writerow([episode, seed, total_reward, step, success, terminated, truncated, init_dist, best_dist, final_dist, wall_touch_steps])
+
+
+# ── Wall-contact summary ───────────────────────────────────────────────────────
+# Same diagnostic that motivated v4: how many steps the agent spends in contact
+# with a wall, in successful vs failed episodes (v3 hard model: ~5 vs ~470).
+def _summary(label, rows):
+    if not rows:
+        print(f"  {label}: no episodes")
+        return
+    touches = np.array([r[1] for r in rows], dtype=float)
+    lengths = np.array([r[2] for r in rows], dtype=float)
+    print(f"  {label}: n={len(rows)}, wall-contact steps mean={touches.mean():.1f} "
+          f"(median={np.median(touches):.0f}), {100 * touches.sum() / lengths.sum():.1f}% of steps")
+
+print(f"Wall-contact summary ({model_difficulty} model on {seed_mode} seeds):")
+_summary("successes", [r for r in wall_stats if r[0]])
+_summary("failures ", [r for r in wall_stats if not r[0]])

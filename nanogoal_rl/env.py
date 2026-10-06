@@ -294,6 +294,11 @@ class NanoEnv(gym.Env):
         self._best_dist = np.inf
         self._is_success = False
 
+        # Number of steps of the current episode where the agent's move overlapped
+        # a wall (blocked or forced to slide). Purely diagnostic: it is exposed in
+        # `info["wall_touch_steps"]` (see eval.py) and has no effect on the reward.
+        self._wall_touch_steps = 0
+
         # The limits on the variation of velocity and orientation in the action
         self.__action_v_limit = 2.0
         self.__action_theta_limit = np.pi/6
@@ -407,7 +412,8 @@ class NanoEnv(gym.Env):
         """Compute auxiliary information for debugging.
 
         Returns:
-            dict: Info with distance between agent and target and if the experience is a success or not
+            dict: Info with distance between agent and target, whether the episode is a success,
+            the best distance reached so far and the number of steps spent in contact with a wall
         """
 
         distance = _dist2d(self._agent_location, self._target_location)
@@ -415,7 +421,8 @@ class NanoEnv(gym.Env):
         return {
             "distance": distance,
             "is_success": self._is_success,
-            "best_dist": self._best_dist
+            "best_dist": self._best_dist,
+            "wall_touch_steps": self._wall_touch_steps
         }
 
 
@@ -542,18 +549,15 @@ class NanoEnv(gym.Env):
         kh = self._pool_size(len(self._hard_perm))
 
         if self.difficulty == "easy":
-            print("pool_size_easy: ", ke)
             return self._sample_from(self._easy_perm, ke, "easy")
 
         if self.difficulty == "medium":
-            print("pool_size_easy: ", ke, ", pool_size_medium: ", km)
             # 20% easy, 80% medium 
             if self._sampling_rng.uniform(0.0, 1.0) < 0.2:
                 return self._sample_from(self._easy_perm, ke, "easy")
             return self._sample_from(self._medium_perm, km, "medium")
 
         if self.difficulty == "hard":
-            print("pool_size_easy: ", ke, ", pool_size_medium: ", km, ", pool_size_hard: ", kh)
             # 10% easy, 20% medium, 70% hard
             u = self._sampling_rng.uniform(0.0, 1.0)
             if u < 0.1:
@@ -611,11 +615,9 @@ class NanoEnv(gym.Env):
         super().reset(seed=int(used_seed))
         self._ep += 1
 
-        # Reset the success variable
+        # Reset the success variable and the wall-contact counter
         self._is_success = False
-
-        # TODO: Remove this print
-        print("episode: ", self._ep, " ,seed: ", used_seed)
+        self._wall_touch_steps = 0
 
 
         # ── World generation (with cache if available) ───────────────────────
@@ -864,6 +866,7 @@ class NanoEnv(gym.Env):
         # so hugging walls costs reward even while still making progress.
         if touched_wall:
             reward += self.__penalty_wall_touch
+            self._wall_touch_steps += 1
 
 
         # ── 4. TERMINATION CONDITIONS ─────────────────────────────────────────────

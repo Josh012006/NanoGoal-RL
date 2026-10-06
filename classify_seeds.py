@@ -152,9 +152,10 @@ if __name__ == "__main__":
     print(f"{len(results)} reachable seeds, {unreachable} ignored (unreachable).")
 
     # ── Classification by total angular deviation ─────────────────────────────
-    # Easy   : < 60°   — near straight line, no real detour needed
-    # Medium : 60–200° — 1 to 2 significant detours around walls
-    # Hard   : > 200°  — complex navigation, multiple combined skills needed
+    # Easy   : < 46°    — near straight line, no real detour needed
+    # Medium : 46–270°  — 1 to 2 significant detours around walls
+    # Hard   : > 270°   — complex navigation, multiple combined skills needed
+    # (thresholds are EASY_MAX_DEG / MEDIUM_MAX_DEG defined at the top of this file)
     easy_seeds   = {s: v for s, v in results.items() if v[1] <  EASY_MAX_DEG}
     medium_seeds = {s: v for s, v in results.items() if EASY_MAX_DEG <= v[1] < MEDIUM_MAX_DEG}
     hard_seeds   = {s: v for s, v in results.items() if v[1] >= MEDIUM_MAX_DEG}

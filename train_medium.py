@@ -115,8 +115,8 @@ if __name__ == "__main__":
     # learning_rate is a fresh LinearSchedule rather than a flat value or the one
     # loaded from ppo_lstm_easy -- see train_easy.py for the general rationale
     # (entropy collapse -> late-training instability at a flat LR). Starts where
-    # easy's schedule ended (5e-5) and decays further over medium's own (much
-    # longer) 200M-step budget.
+    # easy's schedule ended (5e-5) and decays further over medium's own
+    # 35M-step budget.
     model = RecurrentPPO.load(
         "models/ppo_lstm_easy",
         env=vec_env,

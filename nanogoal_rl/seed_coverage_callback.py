@@ -17,7 +17,17 @@ merges them.
 
 Logs, every `log_freq` timesteps, to TensorBoard/WandB:
     seed_coverage/{easy,medium,hard}_pct_unique_seen
-    seed_coverage/{easy,medium,hard}_success_rate
+    seed_coverage/{easy,medium,hard}_success_rate         (cumulative since the start of the run)
+    seed_coverage/{easy,medium,hard}_success_rate_recent  (only the episodes finished since the
+                                                           previous log, i.e. the last `log_freq`
+                                                           timesteps)
+
+The cumulative rate is smooth but slow to react: after N episodes a new one only
+weighs 1/N, so it lags behind the current policy (and blends together very
+different pool sizes as the curriculum's pools grow). The recent rate is
+computed from the difference between two successive cumulative snapshots, so it
+reflects the current policy on the current pool. It is not logged for a category
+that finished no episode during the interval (instead of a misleading 0.0).
 
 At the end of training, saves one histogram per pool (as a PNG) showing the
 distribution of how many times each individual seed was visited over the
@@ -36,6 +46,9 @@ class SeedCoverageCallback(BaseCallback):
         self.output_dir = output_dir
         self._pool_sizes = None      # {"easy": n, "medium": n, "hard": n} -- fetched once
         self._last_milestone = 0     # last num_timesteps // log_freq value we logged at
+        # Cumulative {"episodes", "successes"} per category at the previous log,
+        # used to derive the success rate over the last interval only.
+        self._prev_success_stats = {c: {"episodes": 0, "successes": 0} for c in ("easy", "medium", "hard")}
 
     def _on_training_start(self) -> None:
         # Pool sizes are identical across every sub-environment (same
@@ -83,6 +96,7 @@ class SeedCoverageCallback(BaseCallback):
     def _log_coverage(self):
         combined = self._aggregate_counts()
         success_stats = self._aggregate_success_stats()
+        recent_summary = {}  # "successes/episodes" over the last interval, for the verbose print
 
         for category, pool_size in self._pool_sizes.items():
             n_unique = len(combined[category])
@@ -93,6 +107,20 @@ class SeedCoverageCallback(BaseCallback):
             successes = success_stats[category]["successes"]
             success_rate = (successes / episodes) if episodes > 0 else 0.0
             self.logger.record(f"seed_coverage/{category}_success_rate", success_rate)
+
+            # Recent success rate: only the episodes finished since the previous log.
+            delta_episodes  = episodes  - self._prev_success_stats[category]["episodes"]
+            delta_successes = successes - self._prev_success_stats[category]["successes"]
+            if delta_episodes > 0:
+                self.logger.record(
+                    f"seed_coverage/{category}_success_rate_recent",
+                    delta_successes / delta_episodes
+                )
+            recent_summary[category] = f"{delta_successes}/{delta_episodes}"
+
+        # Remember this snapshot for the next interval's recent success rate.
+        self._prev_success_stats = {c: dict(s) for c, s in success_stats.items()}
+
         # Explicit dump so these scalars are written to TensorBoard/WandB
         # right away, rather than waiting for PPO's own next internal flush.
         self.logger.dump(self.num_timesteps)
@@ -100,7 +128,8 @@ class SeedCoverageCallback(BaseCallback):
         if self.verbose:
             parts = [
                 f"{c}={len(combined[c])}/{self._pool_sizes[c]} "
-                f"(success {success_stats[c]['successes']}/{success_stats[c]['episodes']})"
+                f"(success {success_stats[c]['successes']}/{success_stats[c]['episodes']}, "
+                f"recent {recent_summary[c]})"
                 for c in ("easy", "medium", "hard")
             ]
             print(f"[SeedCoverageCallback] step {self.num_timesteps}: " + "  ".join(parts))

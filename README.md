@@ -769,16 +769,16 @@ tensorboard --logdir logs/<hard_logs_folder>
 
 <br />
 
-Test a trained model over 100 episodes:
+Test a trained model over 500 episodes:
 ```bash
 python eval.py --model {easy,medium,hard} --seed {easy,medium,hard,mix}
 ```
 where : 
 - `--model` : difficulty the model was trained for
 - `--seed` : difficulty of the world seeds to test on (`mix` combines all three categories)
-The results will appear as CSV files in the results folder.
+The results will appear as CSV files in the results folder. Besides the usual per-episode columns (return, length, success, distances...), the CSV has a `wall_touch_steps` column: the number of steps of the episode where the agent's move was blocked by or slid along a wall. A short summary (mean wall-contact steps for successful vs failed episodes) is also printed at the end of the run.
 
-Vizualize trajectories concerning the performances for the 100 test episodes:
+Vizualize trajectories concerning the performances for the 500 test episodes:
 ```bash
 python plots.py <csv_file_path>
 ```
