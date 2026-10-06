@@ -196,7 +196,7 @@ What is left is a different kind of failure. Every remaining failure on hard is 
 ### What changed in v4
 
 - **Added a wall-touch penalty**: the agent now receives `-0.2` on every step where its move overlaps a wall (blocked, or forced to slide along it). The value is the new `__penalty_wall_touch` attribute defined in `NanoEnv.__init__` next to the blood-cell penalties, and it is applied in `step()`; contact is reported by the JIT-compiled collision routine, whose resolved positions are unchanged.
-- **Sped up the seed pools' expansion**: easy now expands after 500 episodes (was 1,500), medium now expands after 1,000 episodes (was 4,000) and hard after 2,000 (was 10,000).
+- **Sped up the seed pools' expansion**: easy now expands after 1,000 episodes (was 1,500), medium now expands after 2,000 episodes (was 4,000) and hard after 4,000 (was 10,000).
 
 ## Training Hyperparameters
 
