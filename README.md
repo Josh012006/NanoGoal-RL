@@ -224,13 +224,12 @@ The table below reflects the `RecurrentPPO` configuration set in `train_easy.py`
 
 ## The results of the training (see `eval.py` for the evaluation code)
 
-Training in progress.
-<!-- When all the changes were done, I started training the model. After each training I plotted some interesting relationships between the results parameters.
+Let's see the results of the different trainings after the last changes.
 
 ### Easy mode training
-For the easy mode, the model was trained for **~12,000,000 timesteps** (~2.2 days). I preempted the training because all the seeds were covered and the performance was already satisfying. As expected, the training time increased due to the hidden states also being updated. The reassuring part is that the performance of the model is as good it was previously with PPO. Visually, its behavior is also consistent. 
+For the easy mode, the model was trained for **12,000,000 timesteps** (~3.3 days). The model still performs well on easy level seeds. The training is normal and the visual behavior is consistant. So adding the new component to the reward didn't worsen things. That's reassuring.
 
-What we can also notice that with the presence of the entropy bonus, the entropy_loss (= -entropy) decreases progressively and finally stabilizes showing that the model has stopped its random exploration by the end of the training.
+The number of timesteps assigned is sufficient for the model to settle by the end of its training. We can see the entropy_loss (= -entropy) starts increasing at the end, which means there is less uncertainty in the action it chooses.
 
 <table align="center">
   <tr>
@@ -242,7 +241,7 @@ What we can also notice that with the presence of the entropy bonus, the entropy
   <tr><td></td></tr>
   <tr>
     <td align="center">
-      <img src="public/easy/pool_increase.png" width="800" alt="pool increase"><br>
+      <img src="public/easy/pool_increase_easy.png" width="800" alt="pool increase"><br>
       <u><em>The easy level seeds pool's size evolution during training (displayed in %)</em></u>
     </td>
   </tr>
@@ -316,7 +315,7 @@ I also evaluate this model on 500 easy level seeds for a more rigorous view on i
 </table>
 
 
-I also tested on medium and hard level seeds to make sure the presence of memory doesn't remove the challenge that those constitute. The challenge remains:
+Tested on the medium and hard level seeds, the performance of the easy level model stays the same as in the previous version. Meaning there is still room for improvement with the next parts of the curriculum :
 
 **Test of the model trained for easy mode on medium mode worlds**
 
@@ -378,8 +377,9 @@ I also tested on medium and hard level seeds to make sure the presence of memory
 <br />
 
 ### Medium mode training
+Training in progress.
 
-Next, I trained the model on medium level seeds, starting from the easy level model as a baseline. Medium worlds require the agent to navigate around 1 to 2 significant obstacles — it must learn when to turn and how to recover its heading after a detour. I originally planned to train it for another **200,000,000 timesteps**, but after **29,000,000 timesteps** (~3.8 days) the agent had already achieved a hight success rate and had seen all the seeds in the pool. So I stopped the training. Here are the training metrics.
+<!-- Next, I trained the model on medium level seeds, starting from the easy level model as a baseline. Medium worlds require the agent to navigate around 1 to 2 significant obstacles — it must learn when to turn and how to recover its heading after a detour. I originally planned to train it for another **200,000,000 timesteps**, but after **29,000,000 timesteps** (~3.8 days) the agent had already achieved a hight success rate and had seen all the seeds in the pool. So I stopped the training. Here are the training metrics.
 
 <table align="center">
   <tr>
