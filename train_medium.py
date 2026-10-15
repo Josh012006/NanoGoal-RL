@@ -129,9 +129,17 @@ if __name__ == "__main__":
         device="cpu"  # avoid CPU/GPU non-determinism: never auto-select CUDA
     )
 
+    # reset_num_timesteps=True: medium's own step counter starts at 0 instead of
+    # inheriting the 12M of the loaded ppo_lstm_easy. TensorBoard's x-axis, the
+    # checkpoint names (ppo_medium_<steps>_steps) and both callbacks' 100k
+    # milestones are therefore relative to medium's own 35M budget, and the
+    # LinearSchedule above runs over its whole 5e-5 -> 1e-5 range: SB3 derives
+    # the schedule's progress from the counter, so with reset_num_timesteps=False
+    # it would have started part-way down the ramp (~4e-5). The run is written
+    # to logs/medium_1, the same numbering as easy's logs/easy_1.
     model.learn(
         total_timesteps=35_000_000,
-        reset_num_timesteps=False,
+        reset_num_timesteps=True,
         tb_log_name="medium",
         callback=CallbackList(callbacks)
     )

@@ -125,9 +125,15 @@ if __name__ == "__main__":
         device="cpu"  # avoid CPU/GPU non-determinism: never auto-select CUDA
     )
 
+    # reset_num_timesteps=True: hard's own step counter starts at 0 instead of
+    # inheriting the steps of the loaded ppo_lstm_medium (see train_medium.py).
+    # TensorBoard's x-axis, the checkpoint names (ppo_hard_<steps>_steps) and
+    # both callbacks' 100k milestones are relative to hard's own 400M budget,
+    # and the LinearSchedule above runs over its whole 1e-5 -> 2e-6 range. The
+    # run is written to logs/hard_1.
     model.learn(
         total_timesteps=400_000_000,
-        reset_num_timesteps=False,
+        reset_num_timesteps=True,
         tb_log_name="hard",
         callback=CallbackList(callbacks)
     )

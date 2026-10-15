@@ -197,6 +197,7 @@ What is left is a different kind of failure. Every remaining failure on hard is 
 
 - **Added a wall-touch penalty**: the agent now receives `-0.2` on every step where its move overlaps a wall (blocked, or forced to slide along it). The value is the new `__penalty_wall_touch` attribute defined in `NanoEnv.__init__` next to the blood-cell penalties, and it is applied in `step()`; contact is reported by the JIT-compiled collision routine, whose resolved positions are unchanged.
 - **Sped up the seed pools' expansion**: easy now expands after 1,000 episodes (was 1,500), medium now expands after 2,000 episodes (was 4,000) and hard after 4,000 (was 10,000).
+- **Each stage now counts its timesteps from 0**: medium and hard call `learn(..., reset_num_timesteps=True)` instead of continuing the counter of the checkpoint they load (12M for medium). TensorBoard curves, checkpoint names (`ppo_medium_<steps>_steps`) and the callbacks' 100k milestones are therefore relative to each stage's own budget, and the runs are written to `logs/easy_1`, `logs/medium_1` and `logs/hard_1`. The learning-rate schedules also run over their full range from the first update (before, medium's started at ~4e-5 instead of 5e-5, because SB3 computes the schedule's progress from the counter).
 
 ## Training Hyperparameters
 
