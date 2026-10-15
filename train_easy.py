@@ -21,6 +21,7 @@ from stable_baselines3.common.utils import LinearSchedule
 from sb3_contrib import RecurrentPPO
 from nanogoal_rl.checkpoint_callback import KeepLastNCheckpoints
 from nanogoal_rl.seed_coverage_callback import SeedCoverageCallback
+from nanogoal_rl import fast_lstm
 
 
 def make_env(worker_idx):
@@ -36,6 +37,13 @@ def make_env(worker_idx):
 
 
 if __name__ == "__main__":
+    # Replace sb3-contrib's per-timestep Python LSTM loop (the bottleneck of every
+    # PPO update) by a single, numerically equivalent LSTM call. Skipped with a
+    # warning if the installed sb3-contrib is not the tested one. Must run before
+    # the model is created or loaded; done here (not at import time) so that
+    # SubprocVecEnv workers do not repeat it.
+    fast_lstm.apply()
+
     # Check the environment first
     check_env(env.NanoEnv(difficulty="easy"))
 

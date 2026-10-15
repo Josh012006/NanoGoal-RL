@@ -198,6 +198,7 @@ What is left is a different kind of failure. Every remaining failure on hard is 
 - **Added a wall-touch penalty**: the agent now receives `-0.2` on every step where its move overlaps a wall (blocked, or forced to slide along it). The value is the new `__penalty_wall_touch` attribute defined in `NanoEnv.__init__` next to the blood-cell penalties, and it is applied in `step()`; contact is reported by the JIT-compiled collision routine, whose resolved positions are unchanged.
 - **Sped up the seed pools' expansion**: easy now expands after 1,000 episodes (was 1,500), medium now expands after 2,000 episodes (was 4,000) and hard after 4,000 (was 10,000).
 - **Each stage now counts its timesteps from 0**: medium and hard call `learn(..., reset_num_timesteps=True)` instead of continuing the counter of the checkpoint they load (12M for medium). TensorBoard curves, checkpoint names (`ppo_medium_<steps>_steps`) and the callbacks' 100k milestones are therefore relative to each stage's own budget, and the runs are written to `logs/easy_1`, `logs/medium_1` and `logs/hard_1`. The learning-rate schedules also run over their full range from the first update (before, medium's started at ~4e-5 instead of 5e-5, because SB3 computes the schedule's progress from the counter).
+- **Faster PPO updates (`nanogoal_rl/fast_lstm.py`)**: sb3-contrib runs the LSTM one timestep at a time in a Python loop whenever a minibatch contains an episode start, which was nearly always the case here, so the update took ~89% of a training cycle while the CPUs were mostly idle. The three training scripts now call `fast_lstm.apply()`, which replaces that loop by a single `nn.LSTM` call per sequence (the state reset is applied once at the start of the sequence, which is the only place a reset can occur in sb3-contrib's buffers). It computes the same function (outputs identical, gradients equal up to ~1e-6 float rounding), is not stored in the saved models (checkpoints load with or without it), and switches itself off with a warning if the installed sb3-contrib is not 2.7.x or its equivalence self-test fails. On a 2-vCPU machine this multiplies the training throughput by roughly 6. Runs are still bit-reproducible with respect to each other, but not bit-identical to runs made before this change.
 
 ## Training Hyperparameters
 
@@ -703,6 +704,7 @@ nanogoal_rl/                         # library code (importable package)
 ├── utils.py                         # grid / graph helpers (connectivity, clearance, navigability)
 ├── perlin_noise.py                  # deterministic Perlin-noise topology generation
 ├── checkpoint_callback.py           # KeepLastNCheckpoints (SB3 callback)
+├── fast_lstm.py                     # single-call LSTM forward pass for RecurrentPPO (speed patch, see v4 notes)
 └── seed_coverage_callback.py        # SeedCoverageCallback (SB3 callback)
 
 train_easy.py, train_medium.py, train_hard.py       # curriculum training
