@@ -1,5 +1,8 @@
-train=false
-train_easy=false
-train_medium=false
+train=true
+train_easy=true
+train_medium=true
 train_hard=false
-generate_cache=false
+resume_easy=
+resume_medium=
+resume_hard=
+generate_cache=true

@@ -6,6 +6,8 @@ import gymnasium as gym
 import numpy as np
 import pygame
 import json
+import copy
+import hashlib
 from numba import njit
 from .perlin_noise import fbm2d
 from .utils import main_related_component, clearance_mask_jit, is_navigable_jit
@@ -139,7 +141,8 @@ class NanoEnv(gym.Env):
         max_v: float = 6.0, 
         max_red: int = 8, 
         max_white: int = 4,
-        worker_seed_offset: int = 0
+        worker_seed_offset: int = 0,
+        curriculum_state: Optional[dict] = None
     ):
         """Initialize the NanoEnv environment.
         Args:
@@ -156,6 +159,12 @@ class NanoEnv(gym.Env):
                 different seeds instead of following the same sequence in
                 lockstep. Defaults to 0 for single-environment usage
                 (eval.py, visual_eval.py), where this has no effect anyway.
+            curriculum_state: The dict returned by `get_curriculum_state()` of a
+                previous run's environment, used to RESUME a training: it
+                restores the episode counter (hence the three pools' sizes),
+                the sampling stream, the seed-visit counts and the per-category
+                success statistics. None (default) starts the curriculum from
+                scratch. See `set_curriculum_state()`.
         """
 
         # Introducing difficulty levels for the learning curriculum
@@ -204,6 +213,7 @@ class NanoEnv(gym.Env):
         # happened before, since every worker used to share the same fixed
         # _episode_rng seed for this too). Still fully deterministic and
         # reproducible for a given worker_seed_offset.
+        self._worker_seed_offset = worker_seed_offset
         self._sampling_rng = np.random.default_rng(13579 + worker_seed_offset)
 
         # Tracks how many times each individual seed has actually been drawn
@@ -235,6 +245,7 @@ class NanoEnv(gym.Env):
         # (difficulty=None with an explicit seed, e.g. eval.py/visual_eval.py),
         # where per-category success tracking doesn't apply.
         self._current_category = None
+        self._episode_seed = None  # world seed of the episode in progress (set by reset())
 
 
         # Load topology cache if available
@@ -307,8 +318,8 @@ class NanoEnv(gym.Env):
         self.__penalty_red_cell = -3.0
         self.__penalty_white_cell = -7.0
         
-        # Penalty for collision with a wall
-        self.__penalty_wall_touch = -0.2
+        # Penalty for every step where the agent's move overlaps a wall (v4: -0.4)
+        self.__penalty_wall_touch = -0.4
 
         # Time management
         self._time = 0
@@ -353,6 +364,11 @@ class NanoEnv(gym.Env):
             shape=(2,), 
             dtype=np.float32
         )
+
+        # Resuming a training: restore the curriculum state saved in a checkpoint.
+        # Done last, once the pools and the RNGs exist.
+        if curriculum_state is not None:
+            self.set_curriculum_state(curriculum_state)
 
 
 
@@ -584,6 +600,128 @@ class NanoEnv(gym.Env):
         rate over the seeds already seen so far during training."""
         return self._category_episode_stats
 
+    def _pool_fingerprint(self):
+        """Short hash of the three pools' exact contents and order. Two
+        environments that agree on it draw from identical pools, so a
+        restored `_ep` means the same thing. It changes if seeds.json (or the
+        40%/60% split) changed between the run that saved a checkpoint and the
+        one that resumes it."""
+        payload = json.dumps([self._easy_perm, self._medium_perm, self._hard_perm])
+        return hashlib.sha1(payload.encode()).hexdigest()
+
+    def get_curriculum_state(self):
+        """Everything needed to resume THIS environment instance's curriculum
+        where it stands, as plain JSON-serialisable data:
+
+        - episodes: the episode counter `_ep`, which fully determines the three
+          pools' current sizes (see `_pool_size`);
+        - pool_sizes / pool_totals: the active size of each pool right now, and
+          the full size it can grow to (informational, and used for checks);
+        - sampling_rng_state: where this worker's seed-drawing stream stands, so
+          a resumed run keeps drawing new episodes instead of replaying the
+          start of the stream;
+        - seed_counts / category_stats: the coverage and success bookkeeping
+          read by SeedCoverageCallback, so its curves and final histograms
+          stay continuous across a resume.
+
+        Meant to be called through VecEnv.env_method() from the checkpoint
+        callback, then fed back through the `curriculum_state` constructor
+        argument (or `set_curriculum_state`)."""
+        return {
+            "difficulty": self.difficulty,
+            "worker_seed_offset": int(self._worker_seed_offset),
+            "episodes": int(self._ep),
+            "pool_sizes": {
+                "easy":   self._pool_size(len(self._easy_perm)),
+                "medium": self._pool_size(len(self._medium_perm)),
+                "hard":   self._pool_size(len(self._hard_perm)),
+            },
+            "pool_totals": {
+                "easy":   len(self._easy_perm),
+                "medium": len(self._medium_perm),
+                "hard":   len(self._hard_perm),
+            },
+            "pool_fingerprint": self._pool_fingerprint(),
+            "sampling_rng_state": self._sampling_rng.bit_generator.state,
+            "seed_counts": {
+                category: {str(int(seed)): int(count) for seed, count in counts.items()}
+                for category, counts in self._seed_counts.items()
+            },
+            "category_stats": {
+                category: {"episodes": int(st["episodes"]), "successes": int(st["successes"])}
+                for category, st in self._category_episode_stats.items()
+            },
+        }
+
+    def set_curriculum_state(self, state):
+        """Restores a state produced by `get_curriculum_state()`. Raises
+        ValueError if it does not belong to this environment's curriculum
+        (different difficulty or different seed pools), because resuming on
+        other pools would silently corrupt the curriculum."""
+        if state.get("difficulty") != self.difficulty:
+            raise ValueError(
+                f"Curriculum state was saved for difficulty {state.get('difficulty')!r}, "
+                f"this environment is {self.difficulty!r}."
+            )
+        if state.get("pool_fingerprint") != self._pool_fingerprint():
+            raise ValueError(
+                "Curriculum state was saved with different seed pools (seeds.json or the "
+                "training split changed since the checkpoint was written); refusing to resume."
+            )
+        self._ep = int(state["episodes"])
+        rng_state = state.get("sampling_rng_state")
+        if rng_state is not None:  # None: a worker that did not exist in the saved run keeps its fresh stream
+            self._sampling_rng.bit_generator.state = rng_state
+        self._seed_counts = {
+            category: {int(seed): int(count) for seed, count in state["seed_counts"].get(category, {}).items()}
+            for category in ("easy", "medium", "hard")
+        }
+        self._category_episode_stats = {
+            category: {
+                "episodes":  int(state["category_stats"].get(category, {}).get("episodes", 0)),
+                "successes": int(state["category_stats"].get(category, {}).get("successes", 0)),
+            }
+            for category in ("easy", "medium", "hard")
+        }
+
+    # ── Episode in progress (exact resume) ───────────────────────────────────
+    # get_curriculum_state() / set_curriculum_state() carry what lives ACROSS episodes.
+    # These two carry the episode that is running right now, so that a training resumed
+    # from a checkpoint can go on in the middle of it instead of starting a new one.
+    # reset() is the only place where randomness enters an episode and step() is
+    # deterministic, so the episode is fully described by the attributes below plus the
+    # world seed (the layout is rebuilt from it).
+
+    _EPISODE_FIELDS = (
+        "_episode_seed", "_current_category", "_agent_location", "_target_location",
+        "_agent_trail", "_red_cells", "_white_cells", "_nb_red", "_nb_white",
+        "_velocity", "_orientation", "_best_dist", "_is_success", "_wall_touch_steps",
+        "_time", "_NanoEnv__initial_distance", "_NanoEnv__timelimit",
+    )
+
+    def get_episode_state(self):
+        """Snapshot (deep copy) of the episode in progress, for set_episode_state()."""
+        if self._episode_seed is None:
+            raise RuntimeError("No episode in progress (reset() has not been called).")
+        state = {name: copy.deepcopy(getattr(self, name)) for name in self._EPISODE_FIELDS}
+        state["np_random_state"] = copy.deepcopy(self.np_random.bit_generator.state)
+        return state
+
+    def set_episode_state(self, state):
+        """Puts the environment back in the middle of the episode saved by
+        get_episode_state(): same world, same positions, same clock. Returns the
+        observation the agent would see now, so that the caller can check it against
+        the one it saved. Raises (leaving the caller to reset the environment) if the
+        state cannot be applied."""
+        missing = [name for name in self._EPISODE_FIELDS if name not in state]
+        if missing:
+            raise ValueError(f"Episode state is missing {missing}.")
+        self._build_world(state["_episode_seed"])  # sets self._vessel_topology
+        for name in self._EPISODE_FIELDS:
+            setattr(self, name, copy.deepcopy(state[name]))
+        self.np_random.bit_generator.state = copy.deepcopy(state["np_random_state"])
+        return self._get_obs()
+
     def get_training_pool_sizes(self):
         """Returns the number of seeds in each training pool (identical across
         every sub-environment, since all are built from the same seeds.json
@@ -596,6 +734,33 @@ class NanoEnv(gym.Env):
         }
 
     
+    def _build_world(self, used_seed):
+        """Builds the vessel layout of the episode whose world seed is `used_seed`:
+        sets `self._vessel_topology` and returns the free space (list of np.array([i, j])).
+        Used by reset() and by set_episode_state() (which must rebuild the very same
+        world when a training is resumed in the middle of an episode)."""
+        if str(used_seed) in self._topology_cache:
+            # Cache hit: precomputed topology and free space
+            entry                 = self._topology_cache[str(used_seed)]
+            self._vessel_topology = entry["topology"].copy()
+            # Reconstruct list of np.array([i, j]) from the (N, 2) array
+            available_space       = [entry["available"][k] for k in range(len(entry["available"]))]
+        else:
+            # Cache miss: normal generation
+            new_seed = 1 + int(used_seed)
+            found    = False
+            while not found:
+                self._vessel_topology = self._generate_logical_topology(new_seed)
+                available_space       = main_related_component(self._vessel_topology)
+                available_space       = self._filter_by_clearance(
+                    available_space,
+                    max(self._agent_radius, self._target_radius)
+                )
+                new_seed += 1
+                if len(available_space) > 100:
+                    found = True
+        return available_space
+
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
         """Start a new episode.
 
@@ -621,26 +786,9 @@ class NanoEnv(gym.Env):
 
 
         # ── World generation (with cache if available) ───────────────────────
-        if str(used_seed) in self._topology_cache:
-            # Cache hit: precomputed topology and free space
-            entry                 = self._topology_cache[str(used_seed)]
-            self._vessel_topology = entry["topology"].copy()
-            # Reconstruct list of np.array([i, j]) from the (N, 2) array
-            available_space       = [entry["available"][k] for k in range(len(entry["available"]))]
-        else:
-            # Cache miss: normal generation
-            new_seed = 1 + int(used_seed)
-            found    = False
-            while not found:
-                self._vessel_topology = self._generate_logical_topology(new_seed)
-                available_space       = main_related_component(self._vessel_topology)
-                available_space       = self._filter_by_clearance(
-                    available_space,
-                    max(self._agent_radius, self._target_radius)
-                )
-                new_seed += 1
-                if len(available_space) > 100:
-                    found = True
+        # (see _build_world: sets self._vessel_topology and returns the free space)
+        self._episode_seed = int(used_seed)
+        available_space    = self._build_world(used_seed)
 
         # Precomputed ONCE per reset (the topology doesn't change within an
         # episode) so the target-placement retry loop below -- which can call

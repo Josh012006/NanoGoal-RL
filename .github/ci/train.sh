@@ -55,18 +55,27 @@ send_email() {
 TRAIN_EASY=false
 TRAIN_MEDIUM=false
 TRAIN_HARD=false
+# Optional: a checkpoint folder to RESUME a stage from (e.g.
+# resume_medium=checkpoints/medium/<RUN_ID>/ppo_medium_<N>_steps). Empty = fresh run.
+RESUME_EASY=""
+RESUME_MEDIUM=""
+RESUME_HARD=""
 
 while IFS='=' read -r key value; do
   [ -z "$key" ] && continue
   case "$key" in
-    train_easy)   TRAIN_EASY="$value"   ;;
-    train_medium) TRAIN_MEDIUM="$value" ;;
-    train_hard)   TRAIN_HARD="$value"   ;;
+    train_easy)    TRAIN_EASY="$value"    ;;
+    train_medium)  TRAIN_MEDIUM="$value"  ;;
+    train_hard)    TRAIN_HARD="$value"    ;;
+    resume_easy)   RESUME_EASY="$value"   ;;
+    resume_medium) RESUME_MEDIUM="$value" ;;
+    resume_hard)   RESUME_HARD="$value"   ;;
   esac
 done < "$FLAG_FILE"
 
 TRAINING_FAILED=false
 log "Flags → easy=$TRAIN_EASY medium=$TRAIN_MEDIUM hard=$TRAIN_HARD"
+log "Resume → easy='$RESUME_EASY' medium='$RESUME_MEDIUM' hard='$RESUME_HARD' (empty = fresh run)"
 log "Run ID: $RUN_ID"
 send_email "🚀 NanoGoal training started ($SHA)" \
   "Training started on branch $BRANCH.\nRun ID: $RUN_ID\n\nFlags:\n- easy=$TRAIN_EASY\n- medium=$TRAIN_MEDIUM\n- hard=$TRAIN_HARD\n\nCommit: $SHA"
@@ -135,7 +144,7 @@ if [ "$TRAIN_EASY" = "true" ]; then
   log "Starting easy training..."
   send_email "🟢 NanoGoal — easy training started" "Easy training started.\nRun ID: $RUN_ID\nCommit: $SHA"
 
-  if RUN_ID="$RUN_ID" $VENV/python -u train_easy.py > logs/train_easy.log 2>&1; then
+  if RUN_ID="$RUN_ID" RESUME_FROM="$RESUME_EASY" $VENV/python -u train_easy.py > logs/train_easy.log 2>&1; then
     log "Easy training complete."
     log "Running easy evaluations..."
     $VENV/python eval.py --model easy --seed easy   >> logs/train_easy.log 2>&1
@@ -161,7 +170,7 @@ if [ "$TRAIN_MEDIUM" = "true" ] && [ "${TRAINING_FAILED:-false}" = "false" ]; th
   log "Starting medium training..."
   send_email "🟡 NanoGoal — medium training started" "Medium training started.\nRun ID: $RUN_ID\nCommit: $SHA"
 
-  if RUN_ID="$RUN_ID" $VENV/python -u train_medium.py > logs/train_medium.log 2>&1; then
+  if RUN_ID="$RUN_ID" RESUME_FROM="$RESUME_MEDIUM" $VENV/python -u train_medium.py > logs/train_medium.log 2>&1; then
     log "Medium training complete."
     log "Running medium evaluations..."
     $VENV/python eval.py --model medium --seed easy   >> logs/train_medium.log 2>&1
@@ -187,7 +196,7 @@ if [ "$TRAIN_HARD" = "true" ] && [ "${TRAINING_FAILED:-false}" = "false" ]; then
   log "Starting hard training..."
   send_email "🔴 NanoGoal — hard training started" "Hard training started.\nRun ID: $RUN_ID\nCommit: $SHA"
 
-  if RUN_ID="$RUN_ID" $VENV/python -u train_hard.py > logs/train_hard.log 2>&1; then
+  if RUN_ID="$RUN_ID" RESUME_FROM="$RESUME_HARD" $VENV/python -u train_hard.py > logs/train_hard.log 2>&1; then
     log "Hard training complete."
     log "Running hard evaluations..."
     $VENV/python eval.py --model hard --seed easy   >> logs/train_hard.log 2>&1
@@ -215,6 +224,9 @@ log "Resetting train.flag..."
   echo "train_easy=false"
   echo "train_medium=false"
   echo "train_hard=false"
+  echo "resume_easy="
+  echo "resume_medium="
+  echo "resume_hard="
   echo "generate_cache=false"
 } > "$FLAG_FILE"
 

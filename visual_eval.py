@@ -19,6 +19,7 @@ import torch
 torch.set_num_threads(1)
 
 from nanogoal_rl import env
+from nanogoal_rl.checkpoints import resolve_policy_path, policy_label
 from sb3_contrib import RecurrentPPO
 from PIL import Image
 from pathlib import Path
@@ -41,6 +42,11 @@ parser.add_argument(
     "--seed_value", required=False, type=int, default=None,
     help="Exact seed number to use instead of a difficulty default — "
          "e.g. to inspect a specific seed pulled from a results CSV."
+)
+parser.add_argument(
+    "--policy", required=False, default=None, metavar="PATH",
+    help="Use this policy instead of models/ppo_lstm_<model>.zip: a policy .zip, or a checkpoint "
+         "folder (checkpoints/<stage>/<RUN_ID>/ppo_<stage>_<N>_steps)."
 )
 parser.add_argument(
     "--output", required=False, default=None,
@@ -70,10 +76,18 @@ chosen_seed = args.seed_value if args.seed_value is not None else default_seeds[
 VIDEOS_DIR = Path("videos")
 VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
 
-output_path = args.output or str(VIDEOS_DIR / f"visual_eval_{args.model}_{chosen_seed}.gif")
+# models/ holds the stage's policy; --policy points at any other one (a policy .zip or a
+# checkpoint folder), and its name is then part of the default GIF name.
+if args.policy:
+    policy_path = resolve_policy_path(args.policy)
+    gif_name = f"visual_eval_{args.model}_{policy_label(args.policy)}_{chosen_seed}.gif"
+else:
+    policy_path = "models/" + models[args.model]
+    gif_name = f"visual_eval_{args.model}_{chosen_seed}.gif"
+output_path = args.output or str(VIDEOS_DIR / gif_name)
 
 myEnv = env.NanoEnv(render_mode="human")
-model = RecurrentPPO.load("models/" + models[args.model], env=myEnv, device="cpu")  # avoid CPU/GPU non-determinism
+model = RecurrentPPO.load(policy_path, env=myEnv, device="cpu")  # avoid CPU/GPU non-determinism
 
 # Reset environment to start a new episode
 observation, info = myEnv.reset(seed=chosen_seed)

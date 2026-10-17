@@ -191,14 +191,50 @@ The results were a clear step forward. On medium, the agent already had a high s
 
 What is left is a different kind of failure. Every remaining failure on hard is a timeout: the agent finds a good route around the walls but stays too close to them and ends up stuck against one a short distance from the target (seed 1296 is a clear example). A quick measurement on 120 hard episodes with the final v3 hard model shows how lopsided it is: successful episodes spend about 5 steps in contact with a wall on average (~1 % of their steps), failed ones about 470 of ~790. And nothing in the reward discourages it — only collisions with blood cells were penalized, never walls. **That's the problem v4 is trying to solve.**
 
-`v4` adds the missing signal: a small penalty (`-0.2`) on every step where the agent's move is blocked by a wall or forces it to slide along one. The value comes from that same measurement: the best progress reward on a free step is about `+0.1`, so hugging a wall never pays; a successful episode loses only about 1 point to it (against `+100` for reaching the goal), while an episode stuck against a wall loses about 90; and an untrained agent, which touches walls 13–17 % of the time, isn't penalized so heavily that early learning gets drowned. Since a new reward changes what every stage learns, the whole curriculum is retrained, starting back from the easy level so that wall avoidance is ingrained in the prior behavior that medium and hard build on. I also made the seed pools grow faster so they reach their full size sooner (v3's hard run alone lasted ~26 days). If the diagnosis is right, the stuck-near-the-target failures should largely disappear and the success rate on hard should move well above v3's ~68 %.
+`v4` adds the missing signal: a penalty (`-0.4`) on every step where the agent's move is blocked by a wall or forces it to slide along one. The value comes from that same measurement: the best progress reward on a free step is about `+0.1`, so hugging a wall never pays; a successful episode loses only about 2 points to it (against `+100` for reaching the goal), while an episode stuck against a wall loses about 180; and an untrained agent, which touches walls 13–17 % of the time, pays about 0.05–0.07 per step on average, which does not drown early learning. (A first version of v4 used `-0.2`; the evaluation of that run showed timeouts spent largely against walls on medium and hard seeds, and the penalty was raised to `-0.4`. `-1.0` was ruled out: it would cost ten times what a free step can earn and would dominate the signal at the start of training.) Since a new reward changes what every stage learns, the whole curriculum is retrained, starting back from the easy level so that wall avoidance is ingrained in the prior behavior that medium and hard build on. I also made the seed pools grow faster so they reach their full size sooner (v3's hard run alone lasted ~26 days). If the diagnosis is right, the stuck-near-the-target failures should largely disappear and the success rate on hard should move well above v3's ~68 %.
+
+### Checkpoints and resuming a training
+
+**Layout.** Every 100,000 timesteps (and once more when training ends) the training scripts write a checkpoint folder:
+
+```
+checkpoints/<stage>/<RUN_ID>/ppo_<stage>_<timesteps>_steps/
+    policy.zip           # the policy, exactly what model.save() produces (weights + optimizer)
+    resume_state.json    # everything else needed to resume the run
+    runtime_state.pkl    # the episodes in progress, LSTM states and random generators (exact resume)
+```
+
+All of them are kept (`keep_all=True` in the three training scripts; `ResumableCheckpointCallback(..., keep_all=False, keep_last_n=N)` goes back to keeping only the last N). Each checkpoint weighs about 7.5 MB, so a 60M-timestep medium stage takes roughly 4.5 GB and a 400M-timestep hard run would take roughly 28 GB (the folder is git-ignored); the callback prints a warning when less than 5 GB of disk is left. A checkpoint is written at the start of a rollout, right after a PPO update, so the policy, the optimizer and the timestep counter are consistent, and it is written to a hidden temporary folder then renamed, so a process killed in the middle of a save never leaves a half-written checkpoint. A checkpoint that cannot be written (disk full) is reported in the log but does not stop the training.
+
+**Policy versus state.** `policy.zip` is a plain model: copy it to `models/ppo_lstm_<stage>.zip` and it is *the* model of that stage, or point `eval.py` / `visual_eval.py` at it with `--policy` (below). `models/` only ever holds policies, as before. `resume_state.json` and `runtime_state.pkl` are only read when resuming. `resume_state.json` stores:
+
+- the **curriculum**, for every worker: the episode counter (which fixes the current size of the easy / medium / hard seed pools), the position of its seed-drawing stream, the per-seed visit counts and the per-category success statistics (so `SeedCoverageCallback`'s curves and histograms stay continuous). The top of the file gives the pool sizes at that point and the sizes they grow to;
+- the **learning rate** in use and the **schedule** it follows (start, end, budget);
+- the run's **target** (the timestep it aims for), its number of timesteps and PPO updates, the TensorBoard folder it writes to, the hyper-parameters in force, the commit, the run ID and the library versions.
+
+`runtime_state.pkl` holds what is in flight at the moment of the checkpoint: for each worker the **episode in progress** (world seed, positions of the agent, target and cells, velocity, orientation, clock, trail, and the monitor's running reward), the last observation, the **LSTM states** of the policy, the episode-start flags, and the global random generators (action sampling, minibatch shuffling).
+
+**Resuming.** Add `--resume <checkpoint folder>` to the training script of the stage:
+
+```bash
+python train_medium.py --resume checkpoints/medium/<RUN_ID>/ppo_medium_<timesteps>_steps
+```
+
+The run goes on from that checkpoint: same policy and optimizer, same timestep counter (the new checkpoints are named by absolute timesteps), same seed pools, and the learning rate keeps following its schedule as if nothing had happened. It stops at the checkpoint's own target, unless `--total-timesteps N` gives another one: raising it extends a run past its original budget, and the learning rate then stays at the schedule's final value (e.g. resuming a finished medium run, whose schedule ended at 1e-5, keeps 1e-5 until the end). TensorBoard keeps appending to the run's own folder, so the curves continue. A summary of where the run picks up is printed first, together with consistency checks; a checkpoint of another stage, without state, or built on different seed pools is refused with an explicit message. The resumed run may use a different number of workers (the pools stay where they were; a warning is printed).
+
+**Exact resume.** Thanks to `runtime_state.pkl`, a resumed run goes on from the very same point: every worker is put back in the middle of the episode it was running, the LSTM states and random generators are restored, and the run is **bit-for-bit identical** to the same run left uninterrupted (policy weights, optimizer, curves; checked by comparing an uninterrupted run with one stopped and resumed halfway, on the three stages). Before going on, each restored environment must reproduce exactly the observation the policy had seen; if anything does not match (no `runtime_state.pkl`, a different number of workers, a changed world, an unreadable file...), the resume falls back to starting a new episode in each worker with the LSTM states reset to zero, and says why in the "Episodes" line of the summary it prints. Same learning dynamics in both cases, only the exact trajectory differs in the fallback.
+
+**Starting a stage from another policy.** `--init-from <policy .zip or checkpoint folder>` starts a *fresh* run of medium or hard (counters, curriculum and learning rate from scratch) from that policy instead of the previous stage's `models/ppo_lstm_<stage>.zip`. `--resume` and `--init-from` are mutually exclusive.
+
+**With the CI.** `train.flag` has three optional keys, `resume_easy=`, `resume_medium=` and `resume_hard=`; give one a checkpoint folder (together with the usual `train=true` and `train_<stage>=true`) and `train.sh` passes it to the stage's script. The keys are reset to empty with the other flags once the run is over.
 
 ### What changed in v4
 
-- **Added a wall-touch penalty**: the agent now receives `-0.2` on every step where its move overlaps a wall (blocked, or forced to slide along it). The value is the new `__penalty_wall_touch` attribute defined in `NanoEnv.__init__` next to the blood-cell penalties, and it is applied in `step()`; contact is reported by the JIT-compiled collision routine, whose resolved positions are unchanged.
+- **Added a wall-touch penalty**: the agent now receives `-0.4` on every step where its move overlaps a wall (blocked, or forced to slide along it). The value is the new `__penalty_wall_touch` attribute defined in `NanoEnv.__init__` next to the blood-cell penalties, and it is applied in `step()`; contact is reported by the JIT-compiled collision routine, whose resolved positions are unchanged.
 - **Sped up the seed pools' expansion**: easy now expands after 1,000 episodes (was 1,500), medium now expands after 2,000 episodes (was 4,000) and hard after 4,000 (was 10,000).
 - **Each stage now counts its timesteps from 0**: medium and hard call `learn(..., reset_num_timesteps=True)` instead of continuing the counter of the checkpoint they load (12M for medium). TensorBoard curves, checkpoint names (`ppo_medium_<steps>_steps`) and the callbacks' 100k milestones are therefore relative to each stage's own budget, and the runs are written to `logs/easy_1`, `logs/medium_1` and `logs/hard_1`. The learning-rate schedules also run over their full range from the first update (before, medium's started at ~4e-5 instead of 5e-5, because SB3 computes the schedule's progress from the counter).
 - **Faster PPO updates (`nanogoal_rl/fast_lstm.py`)**: sb3-contrib runs the LSTM one timestep at a time in a Python loop whenever a minibatch contains an episode start, which was nearly always the case here, so the update took ~89% of a training cycle while the CPUs were mostly idle. The three training scripts now call `fast_lstm.apply()`, which replaces that loop by a single `nn.LSTM` call per sequence (the state reset is applied once at the start of the sequence, which is the only place a reset can occur in sb3-contrib's buffers). It computes the same function (outputs identical, gradients equal up to ~1e-6 float rounding), is not stored in the saved models (checkpoints load with or without it), and switches itself off with a warning if the installed sb3-contrib is not 2.7.x or its equivalence self-test fails. On a 2-vCPU machine this multiplies the training throughput by roughly 6. Runs are still bit-reproducible with respect to each other, but not bit-identical to runs made before this change.
+- **Resumable checkpoints**: a checkpoint is no longer just the policy but a folder holding `policy.zip` (a regular SB3 model) next to `resume_state.json` (curriculum, learning rate, target, ...) and `runtime_state.pkl` (episodes in progress, LSTM states, random generators), so a resumed run is bit-for-bit identical to an uninterrupted one. Every checkpoint is kept (`keep_all=True` in the training scripts), and a stopped or crashed training can be resumed from any of them with `--resume`, the learning rate simply carrying on along its schedule. `models/` still only holds policies. Details in "Checkpoints and resuming a training" below.
 
 ## Training Hyperparameters
 
@@ -213,7 +249,7 @@ The table below reflects the `RecurrentPPO` configuration set in `train_easy.py`
 | `learning_rate` | `LinearSchedule(3e-4 → 5e-5)` | `LinearSchedule(5e-5 → 1e-5)` | `LinearSchedule(1e-5 → 2e-6)` |
 | `ent_coef` | 0.01 | 0.01 (inherited) | 0.01 (inherited) |
 | `clip_range` | 0.1 | 0.1 (inherited) | 0.1 (inherited) |
-| `total_timesteps` | 12,000,000 | 35,000,000 | 400,000,000 |
+| `total_timesteps` | 12,000,000 | 60,000,000 | 400,000,000 |
 | `device` | `cpu` | `cpu` | `cpu` |
 | `lstm_hidden_size` | 256 (default) | 256 (inherited) | 256 (inherited) |
 | `n_lstm_layers` | 1 (default) | 1 (inherited) | 1 (inherited) |
@@ -229,7 +265,10 @@ The table below reflects the `RecurrentPPO` configuration set in `train_easy.py`
 Let's see the results of the different trainings after the last changes.
 
 ### Easy mode training
-For the easy mode, the model was trained for **12,000,000 timesteps** (~3.3 days). The model still performs well on easy level seeds. The training is normal and the visual behavior is consistant. So adding the new component to the reward didn't worsen things. That's reassuring.
+
+Training in progress
+
+<!-- For the easy mode, the model was trained for **12,000,000 timesteps** (~3.3 days). The model still performs well on easy level seeds. The training is normal and the visual behavior is consistant. So adding the new component to the reward didn't worsen things. That's reassuring.
 
 The number of timesteps assigned is sufficient for the model to settle by the end of its training. We can see the entropy_loss (= -entropy) starts increasing at the end, which means there is less uncertainty in the action it chooses.
 
@@ -537,7 +576,7 @@ I also tested **Middle schooler Billy :)** on easy and hard tests sets too. Sadl
 
 Training in progress.
 
-<!-- At last, I launched the hard level training. Like already said in previous versions, the difficulty of hard level seeds is that they require the agent to be able to "give up" on the reward signal momentarily and go around large walls to finally be able to attain its goal. `PPO` wasn't able to do that. And we are now trying to see if `RecurrentPPO` can help. I planned to add **400,000,000 timesteps**. But I had to stop after **151,300,000 timesteps** (lasted ~26 days on my virtual machine). I stopped because even though there was clear learning happening, there wasn't any significant increase on the success rate for hard level seeds at some point. But I discuss below in the "Final analysis" section things that I noticed we can improve to have an even better performance. For now here are the training results : 
+At last, I launched the hard level training. Like already said in previous versions, the difficulty of hard level seeds is that they require the agent to be able to "give up" on the reward signal momentarily and go around large walls to finally be able to attain its goal. `PPO` wasn't able to do that. And we are now trying to see if `RecurrentPPO` can help. I planned to add **400,000,000 timesteps**. But I had to stop after **151,300,000 timesteps** (lasted ~26 days on my virtual machine). I stopped because even though there was clear learning happening, there wasn't any significant increase on the success rate for hard level seeds at some point. But I discuss below in the "Final analysis" section things that I noticed we can improve to have an even better performance. For now here are the training results : 
 
 <table align="center">
   <tr>
@@ -706,7 +745,10 @@ nanogoal_rl/                         # library code (importable package)
 ├── env.py                           # NanoEnv: the Gymnasium environment
 ├── utils.py                         # grid / graph helpers (connectivity, clearance, navigability)
 ├── perlin_noise.py                  # deterministic Perlin-noise topology generation
-├── checkpoint_callback.py           # KeepLastNCheckpoints (SB3 callback)
+├── checkpoint_callback.py           # ResumableCheckpointCallback (SB3 callback)
+├── checkpoints.py                   # checkpoint folders: saving, reading, resuming, locating a policy
+├── monitor.py                       # ResumableMonitor: SB3's Monitor that can save/restore the episode in progress
+├── schedules.py                     # StageLinearSchedule: learning rate that survives a resume
 ├── fast_lstm.py                     # single-call LSTM forward pass for RecurrentPPO (speed patch, see v4 notes)
 └── seed_coverage_callback.py        # SeedCoverageCallback (SB3 callback)
 
@@ -753,6 +795,13 @@ Train the model for hard mode:
 python train_hard.py
 ```
 
+Every training script also accepts (all optional, see "Checkpoints and resuming a training"):
+```bash
+python train_<stage>.py --resume <checkpoint folder>        # continue a run from one of its checkpoints
+python train_<stage>.py --total-timesteps <N>               # another target (extends a resumed run, or stretches a fresh one)
+python train_medium.py  --init-from <policy .zip | checkpoint folder>   # medium and hard only: start a fresh run from that policy
+```
+
 <br />
 
 Vizualize the learning statistics for easy mode:
@@ -782,6 +831,8 @@ python eval.py --model {easy,medium,hard} --seed {easy,medium,hard,mix}
 where : 
 - `--model` : difficulty the model was trained for
 - `--seed` : difficulty of the world seeds to test on (`mix` combines all three categories)
+- `--policy` (optional) : evaluate another policy than `models/ppo_lstm_<model>.zip`: a policy `.zip` or a checkpoint folder. Its results then go to `results/<model>__<policy name>/`, so the model's own results are never overwritten (plot them with `saving_plots.py --csv ... --output-folder ...`).
+
 The results will appear as CSV files in the results folder. Besides the usual per-episode columns (return, length, success, distances...), the CSV has a `wall_touch_steps` column: the number of steps of the episode where the agent's move was blocked by or slid along a wall. A short summary (mean wall-contact steps for successful vs failed episodes) is also printed at the end of the run.
 
 Vizualize trajectories concerning the performances for the 500 test episodes:
@@ -810,6 +861,7 @@ python visual_eval.py --model {easy,medium,hard} --seed {easy,medium,hard}
 where : 
 - `--model` : difficulty the model was trained for
 - `--seed` : difficulty of the world seed to use for the episode
+- `--policy` (optional) : use another policy than `models/ppo_lstm_<model>.zip` (a policy `.zip` or a checkpoint folder); its name is then part of the default GIF name
 
 To inspect one exact seed instead (e.g. a seed pulled from a results CSV):
 ```bash

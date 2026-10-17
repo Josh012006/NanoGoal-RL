@@ -15,24 +15,43 @@ from nanogoal_rl import env
 
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.vec_env import SubprocVecEnv
-from stable_baselines3.common.monitor import Monitor
+from nanogoal_rl.monitor import ResumableMonitor
 from stable_baselines3.common.callbacks import CallbackList
-from stable_baselines3.common.utils import LinearSchedule
 from sb3_contrib import RecurrentPPO
-from nanogoal_rl.checkpoint_callback import KeepLastNCheckpoints
+from nanogoal_rl.checkpoint_callback import ResumableCheckpointCallback
+from nanogoal_rl.checkpoints import (
+    parse_stage_args, load_resume, prepare_model_for_resume, report_resume, resolve_policy_path
+)
+from nanogoal_rl.schedules import StageLinearSchedule
 from nanogoal_rl.seed_coverage_callback import SeedCoverageCallback
 from nanogoal_rl import fast_lstm
 
 
-def make_env(worker_idx):
+# Budget of this stage, counted on its own timestep counter. The learning rate decays
+# linearly from LR_START to LR_END over exactly this many timesteps (then stays at
+# LR_END, see nanogoal_rl/schedules.py) and the run stops there, unless
+# --total-timesteps says otherwise. Raise TOTAL_TIMESTEPS to give a fresh run more steps.
+TOTAL_TIMESTEPS = 12_000_000
+LR_START, LR_END = 3e-4, 5e-5
+
+
+def make_env(worker_idx, curriculum_state=None):
     # worker_idx gives each parallel SubprocVecEnv worker a distinct
     # per-episode sampling stream (see env.py's worker_seed_offset), so
     # parallel workers explore genuinely different seeds instead of following
-    # the same draw sequence in lockstep. Monitor is added manually here
+    # the same draw sequence in lockstep. The monitor is added manually here
     # (make_vec_env normally does this for us) since we build SubprocVecEnv
     # directly to be able to pass a different worker_idx to each instance.
+    # ResumableMonitor is SB3's Monitor that can also save and restore the
+    # episode in progress (exact resume, see nanogoal_rl/checkpoints.py).
+    # curriculum_state (None for a fresh run) restores a checkpoint's curriculum
+    # for this worker: episode counter (pool sizes), sampling stream, visit counts.
     def _init():
-        return Monitor(env.NanoEnv(difficulty="easy", worker_seed_offset=worker_idx))
+        return ResumableMonitor(env.NanoEnv(
+            difficulty="easy",
+            worker_seed_offset=worker_idx,
+            curriculum_state=curriculum_state
+        ))
     return _init
 
 
@@ -42,7 +61,11 @@ if __name__ == "__main__":
     # warning if the installed sb3-contrib is not the tested one. Must run before
     # the model is created or loaded; done here (not at import time) so that
     # SubprocVecEnv workers do not repeat it.
-    fast_lstm.apply()
+    fast_lstm_active = fast_lstm.apply()
+
+    # Optional: --resume <checkpoint folder> / --init-from <policy> / --total-timesteps N
+    # (see nanogoal_rl/checkpoints.py). No argument = a fresh run, as before.
+    args = parse_stage_args("easy", allow_init_from=False)
 
     # Check the environment first
     check_env(env.NanoEnv(difficulty="easy"))
@@ -61,22 +84,58 @@ if __name__ == "__main__":
     # half mid-sequence, forcing a stale hidden state back in at that arbitrary cut.
     print(f"Running with {n_envs} parallel environments ({n_steps} steps each)")
 
+    # ── Fresh run, or resume ──────────────────────────────────────────────────
+    # With --resume <checkpoint folder> the run continues exactly where that
+    # checkpoint stopped: same policy and optimizer, same timestep counter, the
+    # curriculum (episode counters -> size of the three seed pools, sampling
+    # streams, seed-visit counts, success statistics) and the learning-rate
+    # schedule it was following (so the learning rate just carries on, and stays at
+    # its final value if the run is extended past its budget).
+    resume = load_resume(args.resume, "easy", n_envs) if args.resume else None
+    if resume is not None:
+        # Fail fast, with a readable message, if the checkpoint does not match the current
+        # seed pools (otherwise the error would only surface inside a worker process).
+        env.NanoEnv(difficulty="easy", curriculum_state=resume.worker_states[0]).close()
+        target_timesteps = args.total_timesteps or resume.target_timesteps
+        if target_timesteps <= resume.num_timesteps:
+            raise SystemExit(
+                f"Nothing to train: the checkpoint is already at {resume.num_timesteps:,} timesteps "
+                f"and the target is {target_timesteps:,}. Pass a larger --total-timesteps to extend the run."
+            )
+        lr_schedule = StageLinearSchedule.from_spec(resume.lr_schedule_spec, session_end=target_timesteps)
+    else:
+        target_timesteps = args.total_timesteps or TOTAL_TIMESTEPS
+        lr_schedule = StageLinearSchedule(LR_START, LR_END, budget=target_timesteps)
+
     # SubprocVecEnv spawns one process per env, enabling true CPU parallelism
-    vec_env = SubprocVecEnv([make_env(i) for i in range(n_envs)])
+    vec_env = SubprocVecEnv([
+        make_env(i, resume.worker_states[i] if resume is not None else None)
+        for i in range(n_envs)
+    ])
 
     # Use RUN_ID from environment for unique checkpoint folder per run
     run_id = os.environ.get("RUN_ID", "local")
     checkpoint_path = f"./checkpoints/easy/{run_id}/"
     print(f"Checkpoint path: {checkpoint_path}")
 
-    checkpoint_callback = KeepLastNCheckpoints(
+    run_config = {
+        "stage": "easy",
+        "run_id": run_id,
+        "target_timesteps": target_timesteps,
+        "lr_schedule": lr_schedule.spec(),
+        "fast_lstm": fast_lstm_active,
+    }
+
+    # Every checkpoint is kept (keep_all=True; ~7 MB each, the folder is git-ignored)
+    # and is a folder holding the policy (policy.zip, a regular SB3 model) next to the
+    # state needed to resume (resume_state.json). Set keep_all=False, keep_last_n=N to
+    # go back to keeping only the N most recent ones.
+    checkpoint_callback = ResumableCheckpointCallback(
         save_freq=100_000,
         save_path=checkpoint_path,
         name_prefix="ppo_easy",
-        keep_last_n=10  # up from 2 -- gives more room to go back and pick a
-        # pre-regression checkpoint (see the README's training notes) instead
-        # of being stuck with only the most recent 2 if the best one turns out
-        # to be further back than that.
+        run_config=run_config,
+        keep_all=True
     )
 
     # Tracks real per-seed training coverage (how many individual seeds from
@@ -161,22 +220,39 @@ if __name__ == "__main__":
     # trained fine for its first ~8M steps at a flat 3e-4 -- decaying from the
     # start would have slowed down learning that was already working, so this
     # only tapers off over the course of training rather than starting low.
-    model = RecurrentPPO(
-        "MultiInputLstmPolicy",
-        env=vec_env,
-        verbose=1,
-        tensorboard_log="./logs/",
-        n_steps=n_steps,
-        batch_size=2_000,
-        n_epochs=8,
-        ent_coef=0.01,
-        clip_range=0.1,
-        learning_rate=LinearSchedule(start=3e-4, end=5e-5, end_fraction=1.0),
-        device="cpu"  # avoid CPU/GPU non-determinism: never auto-select CUDA
-    )
+    if resume is not None:
+        # Everything else (ent_coef, clip_range, n_epochs, batch_size, ...) comes from the
+        # checkpoint's policy.zip; only what depends on this machine/run is overridden.
+        model = RecurrentPPO.load(
+            resume.policy_path,
+            env=vec_env,
+            custom_objects={"n_steps": n_steps, "learning_rate": lr_schedule},
+            device="cpu"  # avoid CPU/GPU non-determinism: never auto-select CUDA
+        )
+        prepare_model_for_resume(model, resume)
+        report_resume(resume, model, lr_schedule, target_timesteps)
+    else:
+        model = RecurrentPPO(
+            "MultiInputLstmPolicy",
+            env=vec_env,
+            verbose=1,
+            tensorboard_log="./logs/",
+            n_steps=n_steps,
+            batch_size=2_000,
+            n_epochs=8,
+            ent_coef=0.01,
+            clip_range=0.1,
+            learning_rate=lr_schedule,
+            device="cpu"  # avoid CPU/GPU non-determinism: never auto-select CUDA
+        )
 
+    # Fresh run: counters start at 0. Resume: the counter continues from the checkpoint
+    # (reset_num_timesteps=False) and only the remaining steps are asked for, so the run
+    # ends exactly at target_timesteps; TensorBoard keeps appending to the run folder the
+    # checkpoint came from (logs/easy_N), so the curves continue.
     model.learn(
-        total_timesteps=12_000_000,
+        total_timesteps=(target_timesteps - model.num_timesteps) if resume is not None else target_timesteps,
+        reset_num_timesteps=resume is None,
         tb_log_name="easy",
         callback=CallbackList(callbacks)
     )

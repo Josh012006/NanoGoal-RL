@@ -57,6 +57,14 @@ class SeedCoverageCallback(BaseCallback):
         sizes_per_env = self.training_env.env_method("get_training_pool_sizes", indices=[0])
         self._pool_sizes = sizes_per_env[0]
 
+        # On a RESUMED run the sub-environments start from the curriculum state
+        # saved in the checkpoint (visit counts, success statistics) and the
+        # counter does not start at 0: begin the intervals from there, so the first
+        # "recent" success rate covers only what is run from now on, and the first
+        # log does not fire immediately. Both are no-ops on a fresh run (all zeros).
+        self._last_milestone = self.model.num_timesteps // self.log_freq
+        self._prev_success_stats = self._aggregate_success_stats()
+
     def _aggregate_counts(self):
         """Merges every sub-env's {category: {seed: count}} into one combined
         dict covering the whole training run so far."""
