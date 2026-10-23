@@ -30,7 +30,7 @@ from nanogoal_rl import fast_lstm
 # linearly from LR_START to LR_END over exactly this many timesteps (then stays at
 # LR_END, see nanogoal_rl/schedules.py) and the run stops there, unless
 # --total-timesteps says otherwise. Raise TOTAL_TIMESTEPS to give a fresh run more steps.
-TOTAL_TIMESTEPS = 400_000_000
+TOTAL_TIMESTEPS = 100_000_000
 LR_START, LR_END = 1e-5, 2e-6
 
 

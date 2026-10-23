@@ -204,7 +204,7 @@ checkpoints/<stage>/<RUN_ID>/ppo_<stage>_<timesteps>_steps/
     runtime_state.pkl    # the episodes in progress, LSTM states and random generators (exact resume)
 ```
 
-All of them are kept (`keep_all=True` in the three training scripts; `ResumableCheckpointCallback(..., keep_all=False, keep_last_n=N)` goes back to keeping only the last N). Each checkpoint weighs about 7.5 MB, so a 60M-timestep medium stage takes roughly 4.5 GB and a 400M-timestep hard run would take roughly 28 GB (the folder is git-ignored); the callback prints a warning when less than 5 GB of disk is left. A checkpoint is written at the start of a rollout, right after a PPO update, so the policy, the optimizer and the timestep counter are consistent, and it is written to a hidden temporary folder then renamed, so a process killed in the middle of a save never leaves a half-written checkpoint. A checkpoint that cannot be written (disk full) is reported in the log but does not stop the training.
+All of them are kept (`keep_all=True` in the three training scripts; `ResumableCheckpointCallback(..., keep_all=False, keep_last_n=N)` goes back to keeping only the last N). Each checkpoint weighs about 7.5 MB, so a 60M-timestep medium stage takes roughly 4.5 GB and a 100M-timestep hard run would take roughly 7.5 GB (the folder is git-ignored); the callback prints a warning when less than 5 GB of disk is left. A checkpoint is written at the start of a rollout, right after a PPO update, so the policy, the optimizer and the timestep counter are consistent, and it is written to a hidden temporary folder then renamed, so a process killed in the middle of a save never leaves a half-written checkpoint. A checkpoint that cannot be written (disk full) is reported in the log but does not stop the training.
 
 **Policy versus state.** `policy.zip` is a plain model: copy it to `models/ppo_lstm_<stage>.zip` and it is *the* model of that stage, or point `eval.py` / `visual_eval.py` at it with `--policy` (below). `models/` only ever holds policies, as before. `resume_state.json` and `runtime_state.pkl` are only read when resuming. `resume_state.json` stores:
 
@@ -249,7 +249,7 @@ The table below reflects the `RecurrentPPO` configuration set in `train_easy.py`
 | `learning_rate` | `LinearSchedule(3e-4 → 5e-5)` | `LinearSchedule(5e-5 → 1e-5)` | `LinearSchedule(1e-5 → 2e-6)` |
 | `ent_coef` | 0.01 | 0.01 (inherited) | 0.01 (inherited) |
 | `clip_range` | 0.1 | 0.1 (inherited) | 0.1 (inherited) |
-| `total_timesteps` | 12,000,000 | 60,000,000 | 400,000,000 |
+| `total_timesteps` | 12,000,000 | 60,000,000 | 100,000,000 |
 | `device` | `cpu` | `cpu` | `cpu` |
 | `lstm_hidden_size` | 256 (default) | 256 (inherited) | 256 (inherited) |
 | `n_lstm_layers` | 1 (default) | 1 (inherited) | 1 (inherited) |
