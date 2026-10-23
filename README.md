@@ -266,11 +266,9 @@ Let's see the results of the different trainings after the last changes.
 
 ### Easy mode training
 
-Training in progress
+For the easy mode, the model was trained for **12,000,000 timesteps** (~19hours). The model still performs well on easy level seeds. The training is normal and the visual behavior is consistant. So adding the new component to the reward didn't worsen things. That's reassuring.
 
-<!-- For the easy mode, the model was trained for **12,000,000 timesteps** (~3.3 days). The model still performs well on easy level seeds. The training is normal and the visual behavior is consistant. So adding the new component to the reward didn't worsen things. That's reassuring.
-
-The number of timesteps assigned is sufficient for the model to settle by the end of its training. We can see the entropy_loss (= -entropy) starts increasing at the end, which means there is less uncertainty in the action it chooses.
+Also the number of timesteps assigned is still sufficient for the model to settle by the end of its training. We can see the entropy_loss (= -entropy) starts increasing at the end, which means there is less uncertainty in the action it chooses.
 
 <table align="center">
   <tr>
@@ -419,9 +417,7 @@ Tested on the medium and hard level seeds, the performance of the easy level mod
 
 ### Medium mode training
 
-The medium level training lasted **~2.6 days for 35,000,000 timesteps**. You can notice it is faster than any of my trainings until now. It's because I applied a simple but efficient fix to the way the SB3 library computed the LSTM weights that brought forth an increase of 2-3x to the training speed. I discuss that in more details in the Final analysis section below. 
-
-The training itself was a success. With the new rule to avoid walls added to the reward, the model is able to take turns that are much smoother and avoid getting stuck. The policy is then able to attain a **88 % success rate** on medium level seeds. But there was a bit of instability around the **25,000,000 th timestep**. But the performance is still good. Here are the training metrics and evaluation results :
+The medium level training lasted **~4.5 days for 60,000,000 timesteps**. The training was also a success. Given much more time, the model is able to achieve over 90% success rate and display good behavior. The training metrics are presented below : 
 
 <table align="center">
   <tr>
@@ -511,7 +507,7 @@ And here are the evaluation results :
 </table>
 
 
-I also tested **Middle schooler Billy :)** on easy and hard tests sets too. Sadly enough the success rate on the easy level worlds decreased. I think it might be due to the instability that occured mid-training and also evaluation noise. But the results are still acceptable. On difficult level worlds we can see a clear amelioration, going from 17% (our easy level prior) to 50%. But there is still room for improvement. And it's time to test and see if the new reward component can really help bridge the gap to the perfect success in hard level modes.
+I also tested **Middle schooler Billy :)** on easy and hard tests sets too. On difficult level worlds we can see a clear improvement, going from 15% (our easy level prior) to 61%. Now it's time to test and see if the new reward component can really help bridge the gap to the perfect success in hard level modes.
 
 **Test of the model trained for medium mode on easy mode worlds**
 
@@ -576,7 +572,7 @@ I also tested **Middle schooler Billy :)** on easy and hard tests sets too. Sadl
 
 Training in progress.
 
-At last, I launched the hard level training. Like already said in previous versions, the difficulty of hard level seeds is that they require the agent to be able to "give up" on the reward signal momentarily and go around large walls to finally be able to attain its goal. `PPO` wasn't able to do that. And we are now trying to see if `RecurrentPPO` can help. I planned to add **400,000,000 timesteps**. But I had to stop after **151,300,000 timesteps** (lasted ~26 days on my virtual machine). I stopped because even though there was clear learning happening, there wasn't any significant increase on the success rate for hard level seeds at some point. But I discuss below in the "Final analysis" section things that I noticed we can improve to have an even better performance. For now here are the training results : 
+<!-- At last, I launched the hard level training. Like already said in previous versions, the difficulty of hard level seeds is that they require the agent to be able to "give up" on the reward signal momentarily and go around large walls to finally be able to attain its goal. `PPO` wasn't able to do that. And we are now trying to see if `RecurrentPPO` can help. I planned to add **400,000,000 timesteps**. But I had to stop after **151,300,000 timesteps** (lasted ~26 days on my virtual machine). I stopped because even though there was clear learning happening, there wasn't any significant increase on the success rate for hard level seeds at some point. But I discuss below in the "Final analysis" section things that I noticed we can improve to have an even better performance. For now here are the training results : 
 
 <table align="center">
   <tr>
