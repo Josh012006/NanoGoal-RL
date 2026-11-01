@@ -1,3 +1,5 @@
+[![XERJ Corpus Hub contributor](https://hub.xerj.org/contributors/Josh012006/badge.svg)](https://hub.xerj.org/contributors/Josh012006)
+
 # The agent's behavior over different difficulty levels
 
 ### Behavior of the model trained for easy mode
@@ -570,9 +572,7 @@ I also tested **Middle schooler Billy :)** on easy and hard tests sets too. On d
 
 ### Hard mode training
 
-Training in progress.
-
-<!-- At last, I launched the hard level training. Like already said in previous versions, the difficulty of hard level seeds is that they require the agent to be able to "give up" on the reward signal momentarily and go around large walls to finally be able to attain its goal. `PPO` wasn't able to do that. And we are now trying to see if `RecurrentPPO` can help. I planned to add **400,000,000 timesteps**. But I had to stop after **151,300,000 timesteps** (lasted ~26 days on my virtual machine). I stopped because even though there was clear learning happening, there wasn't any significant increase on the success rate for hard level seeds at some point. But I discuss below in the "Final analysis" section things that I noticed we can improve to have an even better performance. For now here are the training results : 
+Now the last step of training. Like already said in previous versions, the difficulty of hard level seeds is that they require the agent to be able to "give up" on the reward signal momentarily and go around large walls to finally be able to attain its goal. `PPO` wasn't able to do that. And we are now trying to see if `RecurrentPPO` can help. I trained the agent for **100,000,000 timesteps**. After just that, the agent was able to achieve a better performance than the previous versions. 
 
 <table align="center">
   <tr>
@@ -666,7 +666,7 @@ And here are the evaluation results :
 </table>
 
 
-We can see a clear imporvement in the performance over hard level seeds. No more out of bounds and mostly timeouts. I also tested **High schooler Billy** on easy and medium level seeds. And not only did he keep his good behaviors, he also improved significantly over the two, securing 95+ % success rate on the two levels :
+Now on easy and medium levels :
 
 **Test of the model trained for hard mode on easy mode worlds**
 
@@ -726,12 +726,46 @@ We can see a clear imporvement in the performance over hard level seeds. No more
 
 <br />
 <br />
- -->
 
 ## Final analysis
 
-Coming soon !
+The performance seems to have improved (the hard level model achieves 72 % vs 68 % in the previous version). And we can see that it still stays pretty consistent even in difficult cases :
 
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="public/hard/seed_333.gif" alt="Demo">
+      <br>
+      <em>Seed 333</em>
+    </td>
+    <td align="center">
+      <img src="public/hard/seed_777.gif" alt="Demo">
+      <br>
+      <em>Seed 777</em>
+    </td>
+  </tr>
+</table>
+
+But the visual behavior shows that something is wrong with the way the new agent works. Let's take the medium level challenge for example : 
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="public/hard/old_medium.gif" alt="Demo">
+      <br>
+      <em>Previous agent</em>
+    </td>
+    <td align="center">
+      <img src="public/hard/demo_hard_medium.gif" alt="Demo">
+      <br>
+      <em>New agent</em>
+    </td>
+  </tr>
+</table>
+
+The new agent has become more unstable. And that's not wat we are aiming for. I think it's a compounded effect of the two main changes I made in this version. First the penalty for touching a wall that might give too strong of a signal and prevent the agent from taking narrow, but necessary spaces early. And lastly, the fact that I increased the expansion frequency might not give the agent enough time to learn a stable and useful behavior. 
+
+My next steps will try to solve that.
 
 ## Project structure
 
