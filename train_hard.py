@@ -30,8 +30,15 @@ from nanogoal_rl import fast_lstm
 # linearly from LR_START to LR_END over exactly this many timesteps (then stays at
 # LR_END, see nanogoal_rl/schedules.py) and the run stops there, unless
 # --total-timesteps says otherwise. Raise TOTAL_TIMESTEPS to give a fresh run more steps.
-TOTAL_TIMESTEPS = 100_000_000
-LR_START, LR_END = 1e-5, 2e-6
+#
+# Why 150M and 1e-5 -> 7e-6: the hard pool doubles every 10,000 episodes (see
+# NanoEnv.EXPAND_EVERY), so it only reaches its full size after ~75M timesteps (9 doublings,
+# i.e. 90,000 episodes per worker, at ~1,230 episodes/worker per million steps). 150M
+# leaves as many steps again on the full pool. The learning rate is the one the v3 run saw
+# over its first 150M steps (it was scheduled over 400M and stopped at 151M): it stays
+# close to 1e-5 while the curriculum is still growing, instead of falling to 2e-6.
+TOTAL_TIMESTEPS = 150_000_000
+LR_START, LR_END = 1e-5, 7e-6
 
 
 def make_env(worker_idx, curriculum_state=None):
@@ -180,7 +187,7 @@ if __name__ == "__main__":
     # train_easy.py for why batch_size=2_000 rather than the full rollout.
     #
     # learning_rate: a fresh LinearSchedule continuing where medium's ended
-    # (1e-5), decaying further over hard's own 400M-step budget -- see
+    # (1e-5), decaying only to 7e-6 over hard's own 150M-step budget -- see
     # train_easy.py for the general rationale (entropy collapse -> late-training
     # instability at a flat LR).
     # Starting policy: the checkpoint's own when resuming, otherwise --init-from if given

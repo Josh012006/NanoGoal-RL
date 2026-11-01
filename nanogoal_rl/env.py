@@ -135,6 +135,10 @@ class NanoEnv(gym.Env):
 
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 30}
 
+    # Episodes (of one worker) between two doublings of each seed pool. Every pool has
+    # its own rate, in every stage: a pool of harder seeds grows more slowly.
+    EXPAND_EVERY = {"easy": 1500, "medium": 4000, "hard": 10000}
+
     def __init__(self, 
         render_mode: str = None, 
         difficulty: Optional[Difficulty] = None, 
@@ -257,9 +261,11 @@ class NanoEnv(gym.Env):
         # Learn by using increasing pools of seeds
         self._ep = 0               # episodes count
         self._pool_init = 4        # initial pool's size
-        self._expand_every = 1000 if difficulty == "easy" else \
-                            2000  if difficulty == "medium" else \
-                            4000  # expansion frequency
+        # Expansion frequency, per pool: a pool doubles every EXPAND_EVERY[category]
+        # episodes of this worker, whatever the stage being trained (the easy pool
+        # used in the medium and hard stages follows the easy rate, not the stage's).
+        # A harder pool holds harder (and rarer) seeds, so it grows more slowly.
+        self._expand_every = dict(self.EXPAND_EVERY)
 
         # Discrete representation as a grid
         self._size = 125  # grid's size
@@ -543,8 +549,10 @@ class NanoEnv(gym.Env):
         return out
 
 
-    def _pool_size(self, max_len: int):
-        steps = self._ep // self._expand_every
+    def _pool_size(self, max_len: int, category: str):
+        """Active size of the `category` pool: it starts at `_pool_init` seeds and
+        doubles every EXPAND_EVERY[category] episodes, up to its full size."""
+        steps = self._ep // self._expand_every[category]
         k = self._pool_init * (2 ** steps)
         return int(min(max_len, max(1, k)))
     
@@ -560,9 +568,9 @@ class NanoEnv(gym.Env):
         """Generates a seed for the episode depending on the difficulty level chosen"""
 
         # Actual sizes of the pools
-        ke = self._pool_size(len(self._easy_perm))
-        km = self._pool_size(len(self._medium_perm))
-        kh = self._pool_size(len(self._hard_perm))
+        ke = self._pool_size(len(self._easy_perm), "easy")
+        km = self._pool_size(len(self._medium_perm), "medium")
+        kh = self._pool_size(len(self._hard_perm), "hard")
 
         if self.difficulty == "easy":
             return self._sample_from(self._easy_perm, ke, "easy")
@@ -613,8 +621,9 @@ class NanoEnv(gym.Env):
         """Everything needed to resume THIS environment instance's curriculum
         where it stands, as plain JSON-serialisable data:
 
-        - episodes: the episode counter `_ep`, which fully determines the three
-          pools' current sizes (see `_pool_size`);
+        - episodes: the episode counter `_ep`, which (with the per-pool
+          EXPAND_EVERY rates) fully determines the three pools' current sizes
+          (see `_pool_size`);
         - pool_sizes / pool_totals: the active size of each pool right now, and
           the full size it can grow to (informational, and used for checks);
         - sampling_rng_state: where this worker's seed-drawing stream stands, so
@@ -632,10 +641,11 @@ class NanoEnv(gym.Env):
             "worker_seed_offset": int(self._worker_seed_offset),
             "episodes": int(self._ep),
             "pool_sizes": {
-                "easy":   self._pool_size(len(self._easy_perm)),
-                "medium": self._pool_size(len(self._medium_perm)),
-                "hard":   self._pool_size(len(self._hard_perm)),
+                "easy":   self._pool_size(len(self._easy_perm), "easy"),
+                "medium": self._pool_size(len(self._medium_perm), "medium"),
+                "hard":   self._pool_size(len(self._hard_perm), "hard"),
             },
+            "expand_every": dict(self._expand_every),
             "pool_totals": {
                 "easy":   len(self._easy_perm),
                 "medium": len(self._medium_perm),
@@ -669,6 +679,23 @@ class NanoEnv(gym.Env):
                 "training split changed since the checkpoint was written); refusing to resume."
             )
         self._ep = int(state["episodes"])
+        # The pools' sizes are recomputed from the episode counter and EXPAND_EVERY. If the
+        # rates changed since the checkpoint was written (or it predates per-pool rates),
+        # resuming would make the pools jump (possibly shrink): refuse instead.
+        saved_pools = state.get("pool_sizes")
+        if saved_pools is not None:
+            now_pools = {
+                "easy":   self._pool_size(len(self._easy_perm), "easy"),
+                "medium": self._pool_size(len(self._medium_perm), "medium"),
+                "hard":   self._pool_size(len(self._hard_perm), "hard"),
+            }
+            if {c: int(saved_pools[c]) for c in now_pools} != now_pools:
+                raise ValueError(
+                    f"Curriculum state was saved with seed pools of sizes {saved_pools} at episode "
+                    f"{self._ep}, but the current expansion rates {self._expand_every} give {now_pools}: "
+                    "the pool expansion frequencies changed since the checkpoint was written; "
+                    "refusing to resume."
+                )
         rng_state = state.get("sampling_rng_state")
         if rng_state is not None:  # None: a worker that did not exist in the saved run keeps its fresh stream
             self._sampling_rng.bit_generator.state = rng_state

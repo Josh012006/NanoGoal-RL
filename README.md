@@ -193,7 +193,7 @@ The results were a clear step forward. On medium, the agent already had a high s
 
 What is left is a different kind of failure. Every remaining failure on hard is a timeout: the agent finds a good route around the walls but stays too close to them and ends up stuck against one a short distance from the target (seed 1296 is a clear example). A quick measurement on 120 hard episodes with the final v3 hard model shows how lopsided it is: successful episodes spend about 5 steps in contact with a wall on average (~1 % of their steps), failed ones about 470 of ~790. And nothing in the reward discourages it — only collisions with blood cells were penalized, never walls. **That's the problem v4 is trying to solve.**
 
-`v4` adds the missing signal: a penalty (`-0.4`) on every step where the agent's move is blocked by a wall or forces it to slide along one. The value comes from that same measurement: the best progress reward on a free step is about `+0.1`, so hugging a wall never pays; a successful episode loses only about 2 points to it (against `+100` for reaching the goal), while an episode stuck against a wall loses about 180; and an untrained agent, which touches walls 13–17 % of the time, pays about 0.05–0.07 per step on average, which does not drown early learning. (A first version of v4 used `-0.2`; the evaluation of that run showed timeouts spent largely against walls on medium and hard seeds, and the penalty was raised to `-0.4`. `-1.0` was ruled out: it would cost ten times what a free step can earn and would dominate the signal at the start of training.) Since a new reward changes what every stage learns, the whole curriculum is retrained, starting back from the easy level so that wall avoidance is ingrained in the prior behavior that medium and hard build on. I also made the seed pools grow faster so they reach their full size sooner (v3's hard run alone lasted ~26 days). If the diagnosis is right, the stuck-near-the-target failures should largely disappear and the success rate on hard should move well above v3's ~68 %.
+`v4` adds the missing signal: a penalty (`-0.4`) on every step where the agent's move is blocked by a wall or forces it to slide along one. The value comes from that same measurement: the best progress reward on a free step is about `+0.1`, so hugging a wall never pays; a successful episode loses only about 2 points to it (against `+100` for reaching the goal), while an episode stuck against a wall loses about 180; and an untrained agent, which touches walls 13–17 % of the time, pays about 0.05–0.07 per step on average, which does not drown early learning. (A first version of v4 used `-0.2`; the evaluation of that run showed timeouts spent largely against walls on medium and hard seeds, and the penalty was raised to `-0.4`. `-1.0` was ruled out: it would cost ten times what a free step can earn and would dominate the signal at the start of training.) Since a new reward changes what every stage learns, the whole curriculum is retrained, starting back from the easy level so that wall avoidance is ingrained in the prior behavior that medium and hard build on. I also made the seed pools grow faster so they reach their full size sooner (v3's hard run alone lasted ~26 days); this change was later reverted and replaced by per-pool rates (see "What changed in v4" and "Final analysis"). If the diagnosis is right, the stuck-near-the-target failures should largely disappear and the success rate on hard should move well above v3's ~68 %.
 
 ### Checkpoints and resuming a training
 
@@ -206,7 +206,7 @@ checkpoints/<stage>/<RUN_ID>/ppo_<stage>_<timesteps>_steps/
     runtime_state.pkl    # the episodes in progress, LSTM states and random generators (exact resume)
 ```
 
-All of them are kept (`keep_all=True` in the three training scripts; `ResumableCheckpointCallback(..., keep_all=False, keep_last_n=N)` goes back to keeping only the last N). Each checkpoint weighs about 7.5 MB, so a 60M-timestep medium stage takes roughly 4.5 GB and a 100M-timestep hard run would take roughly 7.5 GB (the folder is git-ignored); the callback prints a warning when less than 5 GB of disk is left. A checkpoint is written at the start of a rollout, right after a PPO update, so the policy, the optimizer and the timestep counter are consistent, and it is written to a hidden temporary folder then renamed, so a process killed in the middle of a save never leaves a half-written checkpoint. A checkpoint that cannot be written (disk full) is reported in the log but does not stop the training.
+All of them are kept (`keep_all=True` in the three training scripts; `ResumableCheckpointCallback(..., keep_all=False, keep_last_n=N)` goes back to keeping only the last N). Each checkpoint weighs about 7.5 MB, so a 60M-timestep medium stage takes roughly 4.5 GB and a 150M-timestep hard run would take roughly 11 GB (the folder is git-ignored); the callback prints a warning when less than 5 GB of disk is left. A checkpoint is written at the start of a rollout, right after a PPO update, so the policy, the optimizer and the timestep counter are consistent, and it is written to a hidden temporary folder then renamed, so a process killed in the middle of a save never leaves a half-written checkpoint. A checkpoint that cannot be written (disk full) is reported in the log but does not stop the training.
 
 **Policy versus state.** `policy.zip` is a plain model: copy it to `models/ppo_lstm_<stage>.zip` and it is *the* model of that stage, or point `eval.py` / `visual_eval.py` at it with `--policy` (below). `models/` only ever holds policies, as before. `resume_state.json` and `runtime_state.pkl` are only read when resuming. `resume_state.json` stores:
 
@@ -233,7 +233,8 @@ The run goes on from that checkpoint: same policy and optimizer, same timestep c
 ### What changed in v4
 
 - **Added a wall-touch penalty**: the agent now receives `-0.4` on every step where its move overlaps a wall (blocked, or forced to slide along it). The value is the new `__penalty_wall_touch` attribute defined in `NanoEnv.__init__` next to the blood-cell penalties, and it is applied in `step()`; contact is reported by the JIT-compiled collision routine, whose resolved positions are unchanged.
-- **Sped up the seed pools' expansion**: easy now expands after 1,000 episodes (was 1,500), medium now expands after 2,000 episodes (was 4,000) and hard after 4,000 (was 10,000).
+- **Seed pools now expand at their own rate**: each pool doubles every `NanoEnv.EXPAND_EVERY[category]` episodes of a worker: **easy 1,500, medium 4,000, hard 10,000**, whatever the stage being trained. Before, the rate depended on the *stage* and was shared by all the pools of that stage (in the hard stage, the easy and medium pools also doubled every 10,000 episodes in v3, and every 4,000 in the first v4 run, which was not meaningful: an easy pool has no reason to grow at the pace of the hard one). A first v4 run had sped everything up (1,000 / 2,000 / 4,000 by stage); the rates of the v3 pools are now back, applied per pool. Expansion rates are saved in the checkpoints, and `--resume` refuses a checkpoint whose pool sizes don't match the current rates (otherwise the pools would silently jump, possibly shrink). Note that the easy stage also goes back to 1,500 (it used 1,000 in the first v4 run) if it is trained again.
+- **Hard stage budget and learning rate matched to the pools' growth**: with a 10,000-episode rate, the hard pool only reaches its full size after ~75M timesteps (9 doublings; ~1,230 episodes per worker per million steps), against ~30M in the first v4 run. The hard budget goes from 100M to **150M** timesteps, leaving about as many steps on the full pool as the v3 run had (~75M). The learning rate goes `1e-5 → 7e-6` over these 150M instead of `1e-5 → 2e-6` over 100M: this is exactly the learning rate the v3 run saw over its first 150M steps (it was scheduled over 400M and stopped at 151M), so the rate no longer falls while the curriculum is still growing. Medium keeps its 60M budget and its `5e-5 → 1e-5` schedule: with the per-pool rates its pool is full after ~20M steps (medium stage).
 - **Each stage now counts its timesteps from 0**: medium and hard call `learn(..., reset_num_timesteps=True)` instead of continuing the counter of the checkpoint they load (12M for medium). TensorBoard curves, checkpoint names (`ppo_medium_<steps>_steps`) and the callbacks' 100k milestones are therefore relative to each stage's own budget, and the runs are written to `logs/easy_1`, `logs/medium_1` and `logs/hard_1`. The learning-rate schedules also run over their full range from the first update (before, medium's started at ~4e-5 instead of 5e-5, because SB3 computes the schedule's progress from the counter).
 - **Faster PPO updates (`nanogoal_rl/fast_lstm.py`)**: sb3-contrib runs the LSTM one timestep at a time in a Python loop whenever a minibatch contains an episode start, which was nearly always the case here, so the update took ~89% of a training cycle while the CPUs were mostly idle. The three training scripts now call `fast_lstm.apply()`, which replaces that loop by a single `nn.LSTM` call per sequence (the state reset is applied once at the start of the sequence, which is the only place a reset can occur in sb3-contrib's buffers). It computes the same function (outputs identical, gradients equal up to ~1e-6 float rounding), is not stored in the saved models (checkpoints load with or without it), and switches itself off with a warning if the installed sb3-contrib is not 2.7.x or its equivalence self-test fails. On a 2-vCPU machine this multiplies the training throughput by roughly 6. Runs are still bit-reproducible with respect to each other, but not bit-identical to runs made before this change.
 - **Resumable checkpoints**: a checkpoint is no longer just the policy but a folder holding `policy.zip` (a regular SB3 model) next to `resume_state.json` (curriculum, learning rate, target, ...) and `runtime_state.pkl` (episodes in progress, LSTM states, random generators), so a resumed run is bit-for-bit identical to an uninterrupted one. Every checkpoint is kept (`keep_all=True` in the training scripts), and a stopped or crashed training can be resumed from any of them with `--resume`, the learning rate simply carrying on along its schedule. `models/` still only holds policies. Details in "Checkpoints and resuming a training" below.
@@ -248,10 +249,10 @@ The table below reflects the `RecurrentPPO` configuration set in `train_easy.py`
 | `n_steps` | `8_000 // n_envs` | `12_000 // n_envs` | `16_000 // n_envs` |
 | `batch_size` | 2,000 | 2,000 | 2,000 |
 | `n_epochs` | 8 | 8 | 10 |
-| `learning_rate` | `LinearSchedule(3e-4 → 5e-5)` | `LinearSchedule(5e-5 → 1e-5)` | `LinearSchedule(1e-5 → 2e-6)` |
+| `learning_rate` | `LinearSchedule(3e-4 → 5e-5)` | `LinearSchedule(5e-5 → 1e-5)` | `LinearSchedule(1e-5 → 7e-6)` |
 | `ent_coef` | 0.01 | 0.01 (inherited) | 0.01 (inherited) |
 | `clip_range` | 0.1 | 0.1 (inherited) | 0.1 (inherited) |
-| `total_timesteps` | 12,000,000 | 60,000,000 | 100,000,000 |
+| `total_timesteps` | 12,000,000 | 60,000,000 | 150,000,000 |
 | `device` | `cpu` | `cpu` | `cpu` |
 | `lstm_hidden_size` | 256 (default) | 256 (inherited) | 256 (inherited) |
 | `n_lstm_layers` | 1 (default) | 1 (inherited) | 1 (inherited) |
@@ -261,6 +262,8 @@ The table below reflects the `RecurrentPPO` configuration set in `train_easy.py`
 | `gae_lambda` | 0.95 (default) | 0.95 (inherited) | 0.95 (inherited) |
 | `vf_coef` | 0.5 (default) | 0.5 (inherited) | 0.5 (inherited) |
 | `max_grad_norm` | 0.5 (default) | 0.5 (inherited) | 0.5 (inherited) |
+
+The medium and hard runs whose results are shown below were made with the first v4 settings (hard: 100,000,000 timesteps, `1e-5 → 2e-6`; pools expanding every 1,000 / 2,000 / 4,000 episodes by stage). The values above are those of the next experiment, described in "Final analysis".
 
 ## The results of the training (see `eval.py` for the evaluation code)
 
@@ -729,7 +732,7 @@ Now on easy and medium levels :
 
 ## Final analysis
 
-The performance seems to have improved (the hard level model achieves 72 % vs 68 % in the previous version). And we can see that it still stays pretty consistent even in difficult cases :
+The hard level model reaches **72.4 %** success on the 500 held-out hard seeds, against **67.8 %** for the previous version. Compared seed by seed, 41 seeds were fixed and 18 regressed (McNemar p ≈ 0.004), so the improvement is real. It comes from a single training run per version though, so the exact size of the gain is uncertain. On medium seeds, the success rate is almost unchanged (96.8 % vs 96.2 %). The agent also stays consistent in difficult cases :
 
 <table align="center">
   <tr>
@@ -746,7 +749,7 @@ The performance seems to have improved (the hard level model achieves 72 % vs 68
   </tr>
 </table>
 
-But the visual behavior shows that something is wrong with the way the new agent works. Let's take the medium level challenge for example : 
+However, the visual behavior of the new agent looks less clean in some cases. Let's take the medium level challenge for example :
 
 <table align="center">
   <tr>
@@ -763,9 +766,31 @@ But the visual behavior shows that something is wrong with the way the new agent
   </tr>
 </table>
 
-The new agent has become more unstable. And that's not wat we are aiming for. I think it's a compounded effect of the two main changes I made in this version. First the penalty for touching a wall that might give too strong of a signal and prevent the agent from taking narrow, but necessary spaces early. And lastly, the fact that I increased the expansion frequency might not give the agent enough time to learn a stable and useful behavior. 
+In these GIFs, the new agent hesitates and has trouble detaching itself from the obstacle. I first thought it was caused by the two main changes of this version : the wall-touch penalty (none before, -0.4 now) and the more frequent pool expansions. To check it, I replayed the 500 test episodes of both versions and compared them. Here is what the data says.
 
-My next steps will try to solve that.
+**What changed in the failures.** In the previous version, a failed episode typically ended stuck against a wall (median of 481 steps in contact with a wall, and 90 % of the last 400 steps spent less than 3 cells away from one). With the penalty, this almost disappeared (median of 2 contact steps). But the failures didn't vanish : the agent now dithers at full speed inside a small area (about 8 cells wide), around 5 cells away from the walls, with a net displacement of about 2 cells. So the penalty did what it was designed for, but the agent that is still blocked now looks like it is "hesitating" instead of "pushing against the wall". Giving it more time doesn't help : with a 120 s limit instead of 40 s, only 4 of the 140 failed episodes (v4) and 2 of the 161 (v3) end up succeeding. These are loops, not a lack of time. The failures are also concentrated on the seeds that require a long detour (Spearman correlation of 0.60 to 0.65 between failure and the ratio *path length / straight distance*, in both versions).
+
+**Hypothesis 1 : the penalty prevents the agent from taking narrow but necessary passages.** The aggregated data doesn't support it. The regressions are not concentrated on narrow corridors, the narrowest fifth of the seeds even improved (54 % → 59 %), and the correlation between corridor width and success is the same as before. There is at least one real individual case (seed 6568, where the agent hesitates at a narrow neck), so the effect might exist, but it's a tail case and not the main behavior.
+
+**Hypothesis 2 : more frequent expansions don't leave enough time to learn stable behavior.** It explains one thing : the success rate drops to ~0.65-0.70 between 10M and 20M steps, when the pools grow quickly, and recovers to ~0.78 around 40M. But all the seeds have been seen at ~31M steps, and the success rate then stays flat until 100M. The agent had ~70M steps on the full pool without improving, so the expansion speed can't explain the final plateau.
+
+**Why I can't conclude yet.** Several things changed at the same time between the two versions, so no single cause can be isolated :
+- the wall-touch penalty (none → -0.4),
+- the pool expansion frequency (every 1500 / 4000 / 10000 episodes for the easy / medium / hard *stage*, shared by all the pools of the stage → every 1000 / 2000 / 4000),
+- the training length (hard stopped at 151M steps → 100M, medium 29M → 60M),
+- the learning rate schedule (it decayed over a 400M-step budget for hard, so it was still ~7e-6 when the previous run was stopped; it now decays to 2e-6 over 100M).
+
+And each version is a single run.
+
+**Other hypotheses, not tested yet.**
+- *Credit assignment over long detours.* With γ = 0.99 and λ = 0.95, the +100 success reward is worth almost nothing (between 0 and ~1.2) at the start of the longest detours. The agent has almost no signal to learn that moving away from the goal can pay off.
+- *Action noise.* The learned standard deviation of the speed action is far above the action bounds (σ ≈ 8.4 in v4), because with clipped actions nothing pushes it back down while `ent_coef` pushes it up. The entropy keeps rising during all the training. It may make fine speed control noisy. However, σ was even higher in the previous version (≈ 11.2), so it can't explain what changed between the two versions.
+
+**Next steps.** The wall penalty stays at `-0.4`: the data didn't show it as the cause, so it is not tested on its own. I'll run controlled experiments changing one thing at a time :
+
+1. **Expansion frequency and learning rate schedule** (first, since they are the confounding factors left over from the first v4 run). The seed pools go back to the v3 rates, but applied *per pool* instead of per stage : easy 1,500, medium 4,000, hard 10,000 episodes between two doublings, in every stage. The hard budget goes to 150M timesteps with a learning rate `1e-5 → 7e-6` (the one v3 saw), so the hard pool is full after ~75M steps and the learning rate has not decayed to 2e-6 while the curriculum was still growing. Medium keeps 60M timesteps and `5e-5 → 1e-5`. See "What changed in v4" for the reasoning.
+2. A longer discount horizon (γ = 0.995-0.998).
+3. A lower `ent_coef` or a capped `log_std`.
 
 ## Project structure
 
