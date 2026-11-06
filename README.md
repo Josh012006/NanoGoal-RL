@@ -271,7 +271,7 @@ Let's see the results of the different trainings after the last changes.
 
 ### Easy mode training
 
-For the easy mode, the model was trained for **12,000,000 timesteps** (~19hours). The model still performs well on easy level seeds. The training is normal and the visual behavior is consistant. So adding the new component to the reward didn't worsen things. That's reassuring.
+For the easy mode, the model was trained for **12,000,000 timesteps** (~17hours). The model still performs well on easy level seeds. The training is normal and the visual behavior is consistent. So adding the new component to the reward didn't worsen things. That's reassuring.
 
 Also the number of timesteps assigned is still sufficient for the model to settle by the end of its training. We can see the entropy_loss (= -entropy) starts increasing at the end, which means there is less uncertainty in the action it chooses.
 
@@ -422,7 +422,7 @@ Tested on the medium and hard level seeds, the performance of the easy level mod
 
 ### Medium mode training
 
-The medium level training lasted **~4.5 days for 60,000,000 timesteps**. The training was also a success. Given much more time, the model is able to achieve over 90% success rate and display good behavior. The training metrics are presented below : 
+The medium level training lasted **~4.3 days for 60,000,000 timesteps**. The training was also a success. Given much more time, the model is able to achieve over 90% success rate and display good behavior. The training metrics are presented below : 
 
 <table align="center">
   <tr>
@@ -512,7 +512,7 @@ And here are the evaluation results :
 </table>
 
 
-I also tested **Middle schooler Billy :)** on easy and hard tests sets too. On difficult level worlds we can see a clear improvement, going from 15% (our easy level prior) to 61%. Now it's time to test and see if the new reward component can really help bridge the gap to the perfect success in hard level modes.
+I also tested **Middle schooler Billy :)** on easy and hard tests sets too. On difficult level worlds we can see a clear improvement, going from 16% (our easy level prior) to 59%. Now it's time to test and see if the new reward component can really help bridge the gap to the perfect success in hard level modes.
 
 **Test of the model trained for medium mode on easy mode worlds**
 
@@ -575,7 +575,9 @@ I also tested **Middle schooler Billy :)** on easy and hard tests sets too. On d
 
 ### Hard mode training
 
-Now the last step of training. Like already said in previous versions, the difficulty of hard level seeds is that they require the agent to be able to "give up" on the reward signal momentarily and go around large walls to finally be able to attain its goal. `PPO` wasn't able to do that. And we are now trying to see if `RecurrentPPO` can help. I trained the agent for **100,000,000 timesteps**. After just that, the agent was able to achieve a better performance than the previous versions. 
+Now the last step of training. Like already said in previous versions, the difficulty of hard level seeds is that they require the agent to be able to "give up" on the reward signal momentarily and go around large walls to finally be able to attain its goal. `PPO` wasn't able to do that. And we are now trying to see if `RecurrentPPO` can help. 
+
+<!-- I trained the agent for **100,000,000 timesteps**. After just that, the agent was able to achieve a better performance than the previous versions. 
 
 <table align="center">
   <tr>
@@ -727,6 +729,8 @@ Now on easy and medium levels :
   </tr>
 </table>
 
+-->
+
 <br />
 <br />
 
@@ -788,7 +792,7 @@ And each version is a single run.
 
 **Next steps.** The wall penalty stays at `-0.4`: the data didn't show it as the cause, so it is not tested on its own. I'll run controlled experiments changing one thing at a time :
 
-1. **Expansion frequency and learning rate schedule** (first, since they are the confounding factors left over from the first v4 run). The seed pools go back to the v3 rates, but applied *per pool* instead of per stage : easy 1,500, medium 4,000, hard 10,000 episodes between two doublings, in every stage. The hard budget goes to 150M timesteps with a learning rate `1e-5 → 7e-6` (the one v3 saw), so the hard pool is full after ~75M steps and the learning rate has not decayed to 2e-6 while the curriculum was still growing. Medium keeps 60M timesteps and `5e-5 → 1e-5`. See "What changed in v4" for the reasoning.
+1. **Expansion frequency and learning rate schedule** (first, since they are the confounding factors left over from the first v4 run). The seed pools go back to the v3 rates, but applied *per pool* instead of per stage : easy 1,500, medium 4,000, hard 10,000 episodes between two doublings, in every stage. The hard budget goes to 150M timesteps with a learning rate `1e-5 → 7e-6` (the one v3 saw), so the hard pool is full after ~75M steps and the learning rate has not decayed to 2e-6 while the curriculum was still growing. Medium keeps 60M timesteps and `5e-5 → 1e-5`.
 2. A longer discount horizon (γ = 0.995-0.998).
 3. A lower `ent_coef` or a capped `log_std`.
 
