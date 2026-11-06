@@ -1,6 +1,6 @@
-train=true
-train_easy=true
-train_medium=true
+train=false
+train_easy=false
+train_medium=false
 train_hard=false
 resume_easy=
 resume_medium=
