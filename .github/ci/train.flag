@@ -1,7 +1,7 @@
-train=true
+train=false
 train_easy=false
 train_medium=false
-train_hard=true
+train_hard=false
 resume_easy=
 resume_medium=
 resume_hard=
