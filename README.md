@@ -577,7 +577,7 @@ I also tested **Middle schooler Billy :)** on easy and hard tests sets too. On d
 
 Now the last step of training. Like already said in previous versions, the difficulty of hard level seeds is that they require the agent to be able to "give up" on the reward signal momentarily and go around large walls to finally be able to attain its goal. `PPO` wasn't able to do that. And we are now trying to see if `RecurrentPPO` can help. 
 
-<!-- I trained the agent for **100,000,000 timesteps**. After just that, the agent was able to achieve a better performance than the previous versions. 
+I trained the agent for **150,000,000 timesteps**. The agent was able to achieve a better performance than the previous versions. 
 
 <table align="center">
   <tr>
@@ -729,7 +729,6 @@ Now on easy and medium levels :
   </tr>
 </table>
 
--->
 
 <br />
 <br />
