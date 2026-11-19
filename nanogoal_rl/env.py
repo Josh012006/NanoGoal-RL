@@ -6,6 +6,8 @@ import gymnasium as gym
 import numpy as np
 import pygame
 import json
+import copy
+import hashlib
 from numba import njit
 from .perlin_noise import fbm2d
 from .utils import main_related_component, clearance_mask_jit, is_navigable_jit
@@ -115,19 +117,27 @@ def _manage_wall_collision_jit(x0, y0, x1, y1, r, size, topology):
     random agent moves; ~3x faster in isolation, called once per moving
     entity (agent + every active red/white cell) every single step, so this
     was one of the largest remaining per-step costs after the lidar and
-    is_navigable fixes (profiling showed it at ~50%+ of step() time)."""
+    is_navigable fixes (profiling showed it at ~50%+ of step() time).
+
+    Returns (x, y, touched): the resolved position (unchanged logic) and
+    whether the intended move overlapped a wall, i.e. it was blocked or had to
+    slide along it. `touched` is False only when the direct move was free."""
     if not _touch_wall_jit(x1, y1, r, size, topology):
-        return x1, y1
+        return x1, y1, False
     if not _touch_wall_jit(x1, y0, r, size, topology):
-        return x1, y0
+        return x1, y0, True
     if not _touch_wall_jit(x0, y1, r, size, topology):
-        return x0, y1
-    return x0, y0
+        return x0, y1, True
+    return x0, y0, True
 
 
 class NanoEnv(gym.Env):
 
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 30}
+
+    # Episodes (of one worker) between two doublings of each seed pool. Every pool has
+    # its own rate, in every stage: a pool of harder seeds grows more slowly.
+    EXPAND_EVERY = {"easy": 1500, "medium": 4000, "hard": 10000}
 
     def __init__(self, 
         render_mode: str = None, 
@@ -135,7 +145,8 @@ class NanoEnv(gym.Env):
         max_v: float = 6.0, 
         max_red: int = 8, 
         max_white: int = 4,
-        worker_seed_offset: int = 0
+        worker_seed_offset: int = 0,
+        curriculum_state: Optional[dict] = None
     ):
         """Initialize the NanoEnv environment.
         Args:
@@ -152,6 +163,12 @@ class NanoEnv(gym.Env):
                 different seeds instead of following the same sequence in
                 lockstep. Defaults to 0 for single-environment usage
                 (eval.py, visual_eval.py), where this has no effect anyway.
+            curriculum_state: The dict returned by `get_curriculum_state()` of a
+                previous run's environment, used to RESUME a training: it
+                restores the episode counter (hence the three pools' sizes),
+                the sampling stream, the seed-visit counts and the per-category
+                success statistics. None (default) starts the curriculum from
+                scratch. See `set_curriculum_state()`.
         """
 
         # Introducing difficulty levels for the learning curriculum
@@ -200,6 +217,7 @@ class NanoEnv(gym.Env):
         # happened before, since every worker used to share the same fixed
         # _episode_rng seed for this too). Still fully deterministic and
         # reproducible for a given worker_seed_offset.
+        self._worker_seed_offset = worker_seed_offset
         self._sampling_rng = np.random.default_rng(13579 + worker_seed_offset)
 
         # Tracks how many times each individual seed has actually been drawn
@@ -231,6 +249,7 @@ class NanoEnv(gym.Env):
         # (difficulty=None with an explicit seed, e.g. eval.py/visual_eval.py),
         # where per-category success tracking doesn't apply.
         self._current_category = None
+        self._episode_seed = None  # world seed of the episode in progress (set by reset())
 
 
         # Load topology cache if available
@@ -242,9 +261,11 @@ class NanoEnv(gym.Env):
         # Learn by using increasing pools of seeds
         self._ep = 0               # episodes count
         self._pool_init = 4        # initial pool's size
-        self._expand_every = 1500 if difficulty == "easy" else \
-                            4000  if difficulty == "medium" else \
-                            10000  # expansion frequency
+        # Expansion frequency, per pool: a pool doubles every EXPAND_EVERY[category]
+        # episodes of this worker, whatever the stage being trained (the easy pool
+        # used in the medium and hard stages follows the easy rate, not the stage's).
+        # A harder pool holds harder (and rarer) seeds, so it grows more slowly.
+        self._expand_every = dict(self.EXPAND_EVERY)
 
         # Discrete representation as a grid
         self._size = 125  # grid's size
@@ -290,6 +311,11 @@ class NanoEnv(gym.Env):
         self._best_dist = np.inf
         self._is_success = False
 
+        # Number of steps of the current episode where the agent's move overlapped
+        # a wall (blocked or forced to slide). Purely diagnostic: it is exposed in
+        # `info["wall_touch_steps"]` (see eval.py) and has no effect on the reward.
+        self._wall_touch_steps = 0
+
         # The limits on the variation of velocity and orientation in the action
         self.__action_v_limit = 2.0
         self.__action_theta_limit = np.pi/6
@@ -297,6 +323,9 @@ class NanoEnv(gym.Env):
         # Penalty collision
         self.__penalty_red_cell = -3.0
         self.__penalty_white_cell = -7.0
+        
+        # Penalty for every step where the agent's move overlaps a wall (v4: -0.4)
+        self.__penalty_wall_touch = -0.4
 
         # Time management
         self._time = 0
@@ -341,6 +370,11 @@ class NanoEnv(gym.Env):
             shape=(2,), 
             dtype=np.float32
         )
+
+        # Resuming a training: restore the curriculum state saved in a checkpoint.
+        # Done last, once the pools and the RNGs exist.
+        if curriculum_state is not None:
+            self.set_curriculum_state(curriculum_state)
 
 
 
@@ -400,7 +434,8 @@ class NanoEnv(gym.Env):
         """Compute auxiliary information for debugging.
 
         Returns:
-            dict: Info with distance between agent and target and if the experience is a success or not
+            dict: Info with distance between agent and target, whether the episode is a success,
+            the best distance reached so far and the number of steps spent in contact with a wall
         """
 
         distance = _dist2d(self._agent_location, self._target_location)
@@ -408,7 +443,8 @@ class NanoEnv(gym.Env):
         return {
             "distance": distance,
             "is_success": self._is_success,
-            "best_dist": self._best_dist
+            "best_dist": self._best_dist,
+            "wall_touch_steps": self._wall_touch_steps
         }
 
 
@@ -513,8 +549,10 @@ class NanoEnv(gym.Env):
         return out
 
 
-    def _pool_size(self, max_len: int):
-        steps = self._ep // self._expand_every
+    def _pool_size(self, max_len: int, category: str):
+        """Active size of the `category` pool: it starts at `_pool_init` seeds and
+        doubles every EXPAND_EVERY[category] episodes, up to its full size."""
+        steps = self._ep // self._expand_every[category]
         k = self._pool_init * (2 ** steps)
         return int(min(max_len, max(1, k)))
     
@@ -530,23 +568,20 @@ class NanoEnv(gym.Env):
         """Generates a seed for the episode depending on the difficulty level chosen"""
 
         # Actual sizes of the pools
-        ke = self._pool_size(len(self._easy_perm))
-        km = self._pool_size(len(self._medium_perm))
-        kh = self._pool_size(len(self._hard_perm))
+        ke = self._pool_size(len(self._easy_perm), "easy")
+        km = self._pool_size(len(self._medium_perm), "medium")
+        kh = self._pool_size(len(self._hard_perm), "hard")
 
         if self.difficulty == "easy":
-            print("pool_size_easy: ", ke)
             return self._sample_from(self._easy_perm, ke, "easy")
 
         if self.difficulty == "medium":
-            print("pool_size_easy: ", ke, ", pool_size_medium: ", km)
             # 20% easy, 80% medium 
             if self._sampling_rng.uniform(0.0, 1.0) < 0.2:
                 return self._sample_from(self._easy_perm, ke, "easy")
             return self._sample_from(self._medium_perm, km, "medium")
 
         if self.difficulty == "hard":
-            print("pool_size_easy: ", ke, ", pool_size_medium: ", km, ", pool_size_hard: ", kh)
             # 10% easy, 20% medium, 70% hard
             u = self._sampling_rng.uniform(0.0, 1.0)
             if u < 0.1:
@@ -573,6 +608,147 @@ class NanoEnv(gym.Env):
         rate over the seeds already seen so far during training."""
         return self._category_episode_stats
 
+    def _pool_fingerprint(self):
+        """Short hash of the three pools' exact contents and order. Two
+        environments that agree on it draw from identical pools, so a
+        restored `_ep` means the same thing. It changes if seeds.json (or the
+        40%/60% split) changed between the run that saved a checkpoint and the
+        one that resumes it."""
+        payload = json.dumps([self._easy_perm, self._medium_perm, self._hard_perm])
+        return hashlib.sha1(payload.encode()).hexdigest()
+
+    def get_curriculum_state(self):
+        """Everything needed to resume THIS environment instance's curriculum
+        where it stands, as plain JSON-serialisable data:
+
+        - episodes: the episode counter `_ep`, which (with the per-pool
+          EXPAND_EVERY rates) fully determines the three pools' current sizes
+          (see `_pool_size`);
+        - pool_sizes / pool_totals: the active size of each pool right now, and
+          the full size it can grow to (informational, and used for checks);
+        - sampling_rng_state: where this worker's seed-drawing stream stands, so
+          a resumed run keeps drawing new episodes instead of replaying the
+          start of the stream;
+        - seed_counts / category_stats: the coverage and success bookkeeping
+          read by SeedCoverageCallback, so its curves and final histograms
+          stay continuous across a resume.
+
+        Meant to be called through VecEnv.env_method() from the checkpoint
+        callback, then fed back through the `curriculum_state` constructor
+        argument (or `set_curriculum_state`)."""
+        return {
+            "difficulty": self.difficulty,
+            "worker_seed_offset": int(self._worker_seed_offset),
+            "episodes": int(self._ep),
+            "pool_sizes": {
+                "easy":   self._pool_size(len(self._easy_perm), "easy"),
+                "medium": self._pool_size(len(self._medium_perm), "medium"),
+                "hard":   self._pool_size(len(self._hard_perm), "hard"),
+            },
+            "expand_every": dict(self._expand_every),
+            "pool_totals": {
+                "easy":   len(self._easy_perm),
+                "medium": len(self._medium_perm),
+                "hard":   len(self._hard_perm),
+            },
+            "pool_fingerprint": self._pool_fingerprint(),
+            "sampling_rng_state": self._sampling_rng.bit_generator.state,
+            "seed_counts": {
+                category: {str(int(seed)): int(count) for seed, count in counts.items()}
+                for category, counts in self._seed_counts.items()
+            },
+            "category_stats": {
+                category: {"episodes": int(st["episodes"]), "successes": int(st["successes"])}
+                for category, st in self._category_episode_stats.items()
+            },
+        }
+
+    def set_curriculum_state(self, state):
+        """Restores a state produced by `get_curriculum_state()`. Raises
+        ValueError if it does not belong to this environment's curriculum
+        (different difficulty or different seed pools), because resuming on
+        other pools would silently corrupt the curriculum."""
+        if state.get("difficulty") != self.difficulty:
+            raise ValueError(
+                f"Curriculum state was saved for difficulty {state.get('difficulty')!r}, "
+                f"this environment is {self.difficulty!r}."
+            )
+        if state.get("pool_fingerprint") != self._pool_fingerprint():
+            raise ValueError(
+                "Curriculum state was saved with different seed pools (seeds.json or the "
+                "training split changed since the checkpoint was written); refusing to resume."
+            )
+        self._ep = int(state["episodes"])
+        # The pools' sizes are recomputed from the episode counter and EXPAND_EVERY. If the
+        # rates changed since the checkpoint was written (or it predates per-pool rates),
+        # resuming would make the pools jump (possibly shrink): refuse instead.
+        saved_pools = state.get("pool_sizes")
+        if saved_pools is not None:
+            now_pools = {
+                "easy":   self._pool_size(len(self._easy_perm), "easy"),
+                "medium": self._pool_size(len(self._medium_perm), "medium"),
+                "hard":   self._pool_size(len(self._hard_perm), "hard"),
+            }
+            if {c: int(saved_pools[c]) for c in now_pools} != now_pools:
+                raise ValueError(
+                    f"Curriculum state was saved with seed pools of sizes {saved_pools} at episode "
+                    f"{self._ep}, but the current expansion rates {self._expand_every} give {now_pools}: "
+                    "the pool expansion frequencies changed since the checkpoint was written; "
+                    "refusing to resume."
+                )
+        rng_state = state.get("sampling_rng_state")
+        if rng_state is not None:  # None: a worker that did not exist in the saved run keeps its fresh stream
+            self._sampling_rng.bit_generator.state = rng_state
+        self._seed_counts = {
+            category: {int(seed): int(count) for seed, count in state["seed_counts"].get(category, {}).items()}
+            for category in ("easy", "medium", "hard")
+        }
+        self._category_episode_stats = {
+            category: {
+                "episodes":  int(state["category_stats"].get(category, {}).get("episodes", 0)),
+                "successes": int(state["category_stats"].get(category, {}).get("successes", 0)),
+            }
+            for category in ("easy", "medium", "hard")
+        }
+
+    # ── Episode in progress (exact resume) ───────────────────────────────────
+    # get_curriculum_state() / set_curriculum_state() carry what lives ACROSS episodes.
+    # These two carry the episode that is running right now, so that a training resumed
+    # from a checkpoint can go on in the middle of it instead of starting a new one.
+    # reset() is the only place where randomness enters an episode and step() is
+    # deterministic, so the episode is fully described by the attributes below plus the
+    # world seed (the layout is rebuilt from it).
+
+    _EPISODE_FIELDS = (
+        "_episode_seed", "_current_category", "_agent_location", "_target_location",
+        "_agent_trail", "_red_cells", "_white_cells", "_nb_red", "_nb_white",
+        "_velocity", "_orientation", "_best_dist", "_is_success", "_wall_touch_steps",
+        "_time", "_NanoEnv__initial_distance", "_NanoEnv__timelimit",
+    )
+
+    def get_episode_state(self):
+        """Snapshot (deep copy) of the episode in progress, for set_episode_state()."""
+        if self._episode_seed is None:
+            raise RuntimeError("No episode in progress (reset() has not been called).")
+        state = {name: copy.deepcopy(getattr(self, name)) for name in self._EPISODE_FIELDS}
+        state["np_random_state"] = copy.deepcopy(self.np_random.bit_generator.state)
+        return state
+
+    def set_episode_state(self, state):
+        """Puts the environment back in the middle of the episode saved by
+        get_episode_state(): same world, same positions, same clock. Returns the
+        observation the agent would see now, so that the caller can check it against
+        the one it saved. Raises (leaving the caller to reset the environment) if the
+        state cannot be applied."""
+        missing = [name for name in self._EPISODE_FIELDS if name not in state]
+        if missing:
+            raise ValueError(f"Episode state is missing {missing}.")
+        self._build_world(state["_episode_seed"])  # sets self._vessel_topology
+        for name in self._EPISODE_FIELDS:
+            setattr(self, name, copy.deepcopy(state[name]))
+        self.np_random.bit_generator.state = copy.deepcopy(state["np_random_state"])
+        return self._get_obs()
+
     def get_training_pool_sizes(self):
         """Returns the number of seeds in each training pool (identical across
         every sub-environment, since all are built from the same seeds.json
@@ -585,33 +761,11 @@ class NanoEnv(gym.Env):
         }
 
     
-    def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
-        """Start a new episode.
-
-        Args:
-            seed: Random seed for reproducible episodes
-            options: Additional configuration namely 
-                - nb_red which is the wanted number of red cells with 0 <= nb_red <= max_red
-                - nb_white which is the wanted number of white cells with 0 <= nb_white <= max_white
-
-        Returns:
-            tuple: (observation, info) for the initial state
-        """
-
-        # Seed the random number generator
-        used_seed = seed if self.difficulty == None and seed != None else self._get_seed()
-
-        super().reset(seed=int(used_seed))
-        self._ep += 1
-
-        # Reset the success variable
-        self._is_success = False
-
-        # TODO: Remove this print
-        print("episode: ", self._ep, " ,seed: ", used_seed)
-
-
-        # ── World generation (with cache if available) ───────────────────────
+    def _build_world(self, used_seed):
+        """Builds the vessel layout of the episode whose world seed is `used_seed`:
+        sets `self._vessel_topology` and returns the free space (list of np.array([i, j])).
+        Used by reset() and by set_episode_state() (which must rebuild the very same
+        world when a training is resumed in the middle of an episode)."""
         if str(used_seed) in self._topology_cache:
             # Cache hit: precomputed topology and free space
             entry                 = self._topology_cache[str(used_seed)]
@@ -632,6 +786,36 @@ class NanoEnv(gym.Env):
                 new_seed += 1
                 if len(available_space) > 100:
                     found = True
+        return available_space
+
+    def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
+        """Start a new episode.
+
+        Args:
+            seed: Random seed for reproducible episodes
+            options: Additional configuration namely 
+                - nb_red which is the wanted number of red cells with 0 <= nb_red <= max_red
+                - nb_white which is the wanted number of white cells with 0 <= nb_white <= max_white
+
+        Returns:
+            tuple: (observation, info) for the initial state
+        """
+
+        # Seed the random number generator
+        used_seed = seed if self.difficulty == None and seed != None else self._get_seed()
+
+        super().reset(seed=int(used_seed))
+        self._ep += 1
+
+        # Reset the success variable and the wall-contact counter
+        self._is_success = False
+        self._wall_touch_steps = 0
+
+
+        # ── World generation (with cache if available) ───────────────────────
+        # (see _build_world: sets self._vessel_topology and returns the free space)
+        self._episode_seed = int(used_seed)
+        available_space    = self._build_world(used_seed)
 
         # Precomputed ONCE per reset (the topology doesn't change within an
         # episode) so the target-placement retry loop below -- which can call
@@ -735,19 +919,27 @@ class NanoEnv(gym.Env):
         return observation, info
     
 
-    def _manage_wall_collision(self, old_location, new_location, radius):
+    def _resolve_wall_collision(self, old_location, new_location, radius):
         """Logic to verify wall collision with a cell or the agent.
         Args:
             old_location: the previous location of the entity
             new_location: the location it wants to attain after the step
-            radius: the entity's radius 
+            radius: the entity's radius
+        Returns:
+            tuple: (resolved location, touched) where `touched` is True when the
+            intended move overlapped a wall (blocked, or slid along it).
         """
-        nx, ny = _manage_wall_collision_jit(
+        nx, ny, touched = _manage_wall_collision_jit(
             float(old_location[0]), float(old_location[1]),
             float(new_location[0]), float(new_location[1]),
             float(radius), self._size, self._vessel_topology
         )
-        return np.array([nx, ny], dtype=np.float32)
+        return np.array([nx, ny], dtype=np.float32), touched
+
+    def _manage_wall_collision(self, old_location, new_location, radius):
+        """Same as _resolve_wall_collision but returns only the resolved
+        location (used for the blood cells, which don't care about contact)."""
+        return self._resolve_wall_collision(old_location, new_location, radius)[0]
     
     
 
@@ -791,7 +983,7 @@ class NanoEnv(gym.Env):
         )
         old_agent_location = self._agent_location.copy()
         new_agent_location = self._agent_location + (v_agent + 0.5 * self.__v_blood) * self.__timestep
-        self._agent_location = self._manage_wall_collision(
+        self._agent_location, touched_wall = self._resolve_wall_collision(
             self._agent_location, new_agent_location, self._agent_radius
         )
         self._agent_trail.append(self._agent_location.copy())
@@ -843,6 +1035,13 @@ class NanoEnv(gym.Env):
 
         # 3e. Idleness penalty — small constant cost to push the agent to keep moving
         reward += -0.03 if p <= 0 else -0.01
+
+        # 3f. Wall-contact penalty — charged on every step where the agent's
+        # intended move overlapped a wall (blocked or forced to slide along it),
+        # so hugging walls costs reward even while still making progress.
+        if touched_wall:
+            reward += self.__penalty_wall_touch
+            self._wall_touch_steps += 1
 
 
         # ── 4. TERMINATION CONDITIONS ─────────────────────────────────────────────

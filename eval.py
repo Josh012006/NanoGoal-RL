@@ -15,6 +15,7 @@ torch.set_num_threads(1)
 
 import json
 from nanogoal_rl import env
+from nanogoal_rl.checkpoints import resolve_policy_path, policy_label
 from sb3_contrib import RecurrentPPO
 import csv
 from pathlib import Path
@@ -24,7 +25,7 @@ DIFFICULTIES = ["easy", "medium", "hard"]
 SEED_MODES   = ["easy", "medium", "hard", "mix"]
 
 parser = argparse.ArgumentParser(
-    description="Evaluate a trained PPO model over 100 test episodes and save results as a CSV."
+    description="Evaluate a trained RecurrentPPO model over 500 test episodes and save results as a CSV."
 )
 parser.add_argument(
     "--model", required=True, choices=DIFFICULTIES,
@@ -33,6 +34,12 @@ parser.add_argument(
 parser.add_argument(
     "--seed", required=True, choices=SEED_MODES,
     help="Difficulty of the world seeds to test on ('mix' combines all three categories)."
+)
+parser.add_argument(
+    "--policy", required=False, default=None, metavar="PATH",
+    help="Evaluate this policy instead of models/ppo_lstm_<model>.zip: a policy .zip, or a checkpoint "
+         "folder (checkpoints/<stage>/<RUN_ID>/ppo_<stage>_<N>_steps). Results go to "
+         "results/<model>__<policy name>/, so the model's own results are never overwritten."
 )
 args = parser.parse_args()
 
@@ -86,14 +93,25 @@ _shuffle_rng = np.random.default_rng(24680)
 test_set = _shuffle_rng.permutation(test_sets[seed_mode])
 
 myEnv = env.NanoEnv()
-model = RecurrentPPO.load("models/ppo_lstm_" + model_difficulty, env=myEnv, device="cpu")  # avoid CPU/GPU non-determinism
+# models/ holds the stage's policy; --policy points at any other policy instead (a policy .zip
+# or a checkpoint folder) and then writes its results to their own folder.
+if args.policy:
+    policy_path = resolve_policy_path(args.policy)
+    folder = f"{model_difficulty}__{policy_label(args.policy)}"
+    print(f"Evaluating policy: {policy_path}")
+else:
+    policy_path = "models/ppo_lstm_" + model_difficulty
+    folder = model_difficulty
+model = RecurrentPPO.load(policy_path, env=myEnv, device="cpu")  # avoid CPU/GPU non-determinism
 
 
-folder = model_difficulty
 Path("results/" + folder).mkdir(parents=True, exist_ok=True)
 with open("results/" + folder + "/ppo_eval_" + seed_mode + ".csv", "w", newline="") as f:
     writer = csv.writer(f)
-    writer.writerow(["episode", "seed", "return", "length", "success", "terminated", "truncated", "init_dist_goal", "best_dist_goal", "final_dist_goal"])
+    # Per-episode (success, wall_touch_steps, length), kept for the summary printed at the end
+    wall_stats = []
+
+    writer.writerow(["episode", "seed", "return", "length", "success", "terminated", "truncated", "init_dist_goal", "best_dist_goal", "final_dist_goal", "wall_touch_steps"])
 
     for episode in range(500):
         seed = test_set[episode]
@@ -129,6 +147,25 @@ with open("results/" + folder + "/ppo_eval_" + seed_mode + ".csv", "w", newline=
         success = info["is_success"]
         best_dist = info["best_dist"]
         final_dist = info["distance"]
+        wall_touch_steps = info["wall_touch_steps"]
+        wall_stats.append((bool(success), wall_touch_steps, step))
 
         # Save the results
-        writer.writerow([episode, seed, total_reward, step, success, terminated, truncated, init_dist, best_dist, final_dist])
+        writer.writerow([episode, seed, total_reward, step, success, terminated, truncated, init_dist, best_dist, final_dist, wall_touch_steps])
+
+
+# ── Wall-contact summary ───────────────────────────────────────────────────────
+# Same diagnostic that motivated v4: how many steps the agent spends in contact
+# with a wall, in successful vs failed episodes (v3 hard model: ~5 vs ~470).
+def _summary(label, rows):
+    if not rows:
+        print(f"  {label}: no episodes")
+        return
+    touches = np.array([r[1] for r in rows], dtype=float)
+    lengths = np.array([r[2] for r in rows], dtype=float)
+    print(f"  {label}: n={len(rows)}, wall-contact steps mean={touches.mean():.1f} "
+          f"(median={np.median(touches):.0f}), {100 * touches.sum() / lengths.sum():.1f}% of steps")
+
+print(f"Wall-contact summary ({model_difficulty} model on {seed_mode} seeds):")
+_summary("successes", [r for r in wall_stats if r[0]])
+_summary("failures ", [r for r in wall_stats if not r[0]])
