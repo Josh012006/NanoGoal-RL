@@ -193,7 +193,7 @@ The results were a clear step forward. On medium, the agent already had a high s
 
 What is left is a different kind of failure. Every remaining failure on hard is a timeout: the agent finds a good route around the walls but stays too close to them and ends up stuck against one a short distance from the target (seed 1296 is a clear example). A quick measurement on 120 hard episodes with the final v3 hard model shows how lopsided it is: successful episodes spend about 5 steps in contact with a wall on average (~1 % of their steps), failed ones about 470 of ~790. And nothing in the reward discourages it — only collisions with blood cells were penalized, never walls. **That's the problem v4 is trying to solve.**
 
-`v4` adds the missing signal: a penalty (`-0.4`) on every step where the agent's move is blocked by a wall or forces it to slide along one. The value comes from that same measurement: the best progress reward on a free step is about `+0.1`, so hugging a wall never pays; a successful episode loses only about 2 points to it (against `+100` for reaching the goal), while an episode stuck against a wall loses about 180; and an untrained agent, which touches walls 13–17 % of the time, pays about 0.05–0.07 per step on average, which does not drown early learning. (A first version of v4 used `-0.2`; the evaluation of that run showed timeouts spent largely against walls on medium and hard seeds, and the penalty was raised to `-0.4`. `-1.0` was ruled out: it would cost ten times what a free step can earn and would dominate the signal at the start of training.) Since a new reward changes what every stage learns, the whole curriculum is retrained, starting back from the easy level so that wall avoidance is ingrained in the prior behavior that medium and hard build on. I also made the seed pools grow faster so they reach their full size sooner (v3's hard run alone lasted ~26 days); this change was later reverted and replaced by per-pool rates (see "What changed in v4" and "Final analysis"). If the diagnosis is right, the stuck-near-the-target failures should largely disappear and the success rate on hard should move well above v3's ~68 %.
+`v4` adds the missing signal: a penalty (`-0.4`) on every step where the agent's move is blocked by a wall or forces it to slide along one. The value comes from that same measurement: the best progress reward on a free step is about `+0.1`, so hugging a wall never pays; a successful episode loses only about 2 points to it (against `+100` for reaching the goal), while an episode stuck against a wall loses about 180; and an untrained agent, which touches walls 13–17 % of the time, pays about 0.05–0.07 per step on average, which does not drown early learning. (A first version of v4 used `-0.2`; the evaluation of that run showed timeouts spent largely against walls on medium and hard seeds, and the penalty was raised to `-0.4`. `-1.0` was ruled out: it would cost ten times what a free step can earn and would dominate the signal at the start of training.) Since a new reward changes what every stage learns, the whole curriculum is retrained, starting back from the easy level so that wall avoidance is ingrained in the prior behavior that medium and hard build on. I also made the seed pools grow faster so they reach their full size sooner (v3's hard run alone lasted ~26 days); this change was later reverted and replaced by per-pool rates (see "What changed in v4" and "Final analysis"). If the diagnosis is right, the stuck-near-the-target failures should largely disappear and the success rate on hard should move well above v3's ~68 %. It didn't (see "Final analysis").
 
 ### Checkpoints and resuming a training
 
@@ -263,7 +263,7 @@ The table below reflects the `RecurrentPPO` configuration set in `train_easy.py`
 | `vf_coef` | 0.5 (default) | 0.5 (inherited) | 0.5 (inherited) |
 | `max_grad_norm` | 0.5 (default) | 0.5 (inherited) | 0.5 (inherited) |
 
-The medium and hard runs whose results are shown below were made with the first v4 settings (hard: 100,000,000 timesteps, `1e-5 → 2e-6`; pools expanding every 1,000 / 2,000 / 4,000 episodes by stage). The values above are those of the next experiment, described in "Final analysis".
+The results shown below were made with these settings. A first v4 hard run used other ones (100,000,000 timesteps, `1e-5 → 2e-6`; pools expanding every 1,000 / 2,000 / 4,000 episodes by stage); its results are compared with the second run in "Final analysis".
 
 ## The results of the training (see `eval.py` for the evaluation code)
 
@@ -577,7 +577,7 @@ I also tested **Middle schooler Billy :)** on easy and hard tests sets too. On d
 
 Now the last step of training. Like already said in previous versions, the difficulty of hard level seeds is that they require the agent to be able to "give up" on the reward signal momentarily and go around large walls to finally be able to attain its goal. `PPO` wasn't able to do that. And we are now trying to see if `RecurrentPPO` can help. 
 
-I trained the agent for **150,000,000 timesteps**. The agent was able to achieve a better performance than the previous versions. 
+I trained the agent for **150,000,000 timesteps**. The agent reached about the same performance as the previous version (67.6 % on hard seeds against 67.8 %, see "Final analysis"). 
 
 <table align="center">
   <tr>
@@ -735,65 +735,59 @@ Now on easy and medium levels :
 
 ## Final analysis
 
-The hard level model reaches **72.4 %** success on the 500 held-out hard seeds, against **67.8 %** for the previous version. Compared seed by seed, 41 seeds were fixed and 18 regressed (McNemar p ≈ 0.004), so the improvement is real. It comes from a single training run per version though, so the exact size of the gain is uncertain. On medium seeds, the success rate is almost unchanged (96.8 % vs 96.2 %). The agent also stays consistent in difficult cases :
+v4 tests one idea: a penalty (`-0.4`) on every step where the agent touches a wall should remove the failures where it ends up stuck against one, and so raise the success rate on hard seeds. I ran the full curriculum twice with it. The two runs only differ by the pool expansion rates, the hard budget and the learning rate schedule (first run: 1,000 / 2,000 / 4,000 episodes between two expansions by stage, 100M hard timesteps, `1e-5 → 2e-6`; second run: per-pool rates, 150M hard timesteps, `1e-5 → 7e-6`, see "What changed in v4"). Both are compared with the v3 run (no penalty) on the same 500 held-out seeds of each level :
+
+| Hard model tested on | v3 (no penalty) | v4, run 1 | v4, run 2 |
+|---|---|---|---|
+| hard seeds | 67.8 % | 72.4 % | 67.6 % |
+| medium seeds | 96.2 % | 96.8 % | 95.8 % |
+| easy seeds | 99.8 % | 99.6 % | 99.6 % |
+
+**The penalty doesn't improve the success rate.**
+- The final run (run 2) is at 67.6 % against 67.8 % for v3. Seed by seed, 37 seeds are fixed and 38 regress (McNemar p = 1.0). Nothing changes on medium (p = 0.82) or easy seeds either.
+- Run 1 had suggested a gain (72.4 %, 41 seeds fixed against 18 regressed compared to v3, p ≈ 0.004). But run 2, which uses the same penalty, is 4.8 points lower than run 1 (26 fixed against 50 regressed, p ≈ 0.008). Those p-values only account for the choice of the 500 test seeds, not for the variation from one training run to another, which is here as large as the effect I was looking for. About 15 % of the hard test seeds change outcome between any two runs (75 between v3 and run 2, 76 between run 1 and run 2), while 289 seeds are solved by all three runs and 106 are failed by all three. With a 95 % confidence interval of about ±4 points on 500 seeds and a single run per version, a gain of the size of run 1 cannot be told apart from run-to-run variation.
+
+**What the penalty did change.** It does what it was designed for : the failures stuck against a wall mostly disappear. In v3, a failed episode typically ended against a wall (median of 481 steps in contact with a wall, and 90 % of the last 400 steps spent less than 3 cells away from one; measured by replaying the test episodes). With the penalty, the median is 2 contact steps per failed episode (162 failures in run 2, only 28 of them with more than 50 contact steps). But removing the contact didn't make the agent succeed : in run 1, the agent that fails now dithers at full speed in a small area (about 8 cells wide, around 5 cells away from the walls, with a net displacement of about 2 cells) instead of pushing against the wall. More time doesn't help either : with a 120 s limit instead of 40 s, only 4 of the 140 failed episodes of run 1 (2 of the 161 of v3) end up succeeding. So being stuck against a wall was a symptom of the agent not finding its way, not the cause of its failures. The failures are in fact concentrated on seeds whose shortest path is much longer than the straight distance to the goal (Spearman correlation of 0.60 to 0.65 between failure and the ratio *path length / straight distance*, in both v3 and v4).
+
+**Does the penalty prevent the agent from taking narrow passages ?** The aggregated data of run 1 doesn't say so : the regressions are not concentrated on narrow corridors, and the narrowest fifth of the hard seeds even improved (54 % → 59 %). But some individual episodes do show hesitation in front of an obstacle, as in the videos below.
+
+**Visual behavior.** On the hard seed 1296, v3 follows the large wall up to the top of the map and stalls there. The v4 agent climbs partway, then oscillates in a narrow vertical band and never commits to the detour :
 
 <table align="center">
   <tr>
     <td align="center">
-      <img src="public/hard/seed_333.gif" alt="Demo">
+      <img src="public/hard/demo_hard_hard_v3.gif" alt="Demo">
       <br>
-      <em>Seed 333</em>
+      <em>v3, hard seed 1296</em>
     </td>
     <td align="center">
-      <img src="public/hard/seed_777.gif" alt="Demo">
+      <img src="public/hard/demo_hard_hard.gif" alt="Demo">
       <br>
-      <em>Seed 777</em>
+      <em>v4, hard seed 1296</em>
     </td>
   </tr>
 </table>
 
-However, the visual behavior of the new agent looks less clean in some cases. Let's take the medium level challenge for example :
+On the medium seed 6568, v3 goes straight through the narrow neck to the goal (226 steps). The v4 agent hesitates in front of it, goes into a side pocket, comes back, and finally makes it (395 steps) :
 
 <table align="center">
   <tr>
     <td align="center">
-      <img src="public/hard/old_medium.gif" alt="Demo">
+      <img src="public/hard/demo_hard_medium_v3.gif" alt="Demo">
       <br>
-      <em>Previous agent</em>
+      <em>v3, medium seed 6568</em>
     </td>
     <td align="center">
       <img src="public/hard/demo_hard_medium.gif" alt="Demo">
       <br>
-      <em>New agent</em>
+      <em>v4, medium seed 6568</em>
     </td>
   </tr>
 </table>
 
-In these GIFs, the new agent hesitates and has trouble detaching itself from the obstacle. I first thought it was caused by the two main changes of this version : the wall-touch penalty (none before, -0.4 now) and the more frequent pool expansions. To check it, I replayed the 500 test episodes of both versions and compared them. Here is what the data says.
+These are two single episodes, they illustrate a behavior but are not statistics : over the 500 test episodes, the successful episodes of v4 (run 2) are about as long as the ones of v3 (median ratio of 1.02 on both medium and hard seeds, and only 1.3 % of the medium episodes more than 1.5× longer).
 
-**What changed in the failures.** In the previous version, a failed episode typically ended stuck against a wall (median of 481 steps in contact with a wall, and 90 % of the last 400 steps spent less than 3 cells away from one). With the penalty, this almost disappeared (median of 2 contact steps). But the failures didn't vanish : the agent now dithers at full speed inside a small area (about 8 cells wide), around 5 cells away from the walls, with a net displacement of about 2 cells. So the penalty did what it was designed for, but the agent that is still blocked now looks like it is "hesitating" instead of "pushing against the wall". Giving it more time doesn't help : with a 120 s limit instead of 40 s, only 4 of the 140 failed episodes (v4) and 2 of the 161 (v3) end up succeeding. These are loops, not a lack of time. The failures are also concentrated on the seeds that require a long detour (Spearman correlation of 0.60 to 0.65 between failure and the ratio *path length / straight distance*, in both versions).
-
-**Hypothesis 1 : the penalty prevents the agent from taking narrow but necessary passages.** The aggregated data doesn't support it. The regressions are not concentrated on narrow corridors, the narrowest fifth of the seeds even improved (54 % → 59 %), and the correlation between corridor width and success is the same as before. There is at least one real individual case (seed 6568, where the agent hesitates at a narrow neck), so the effect might exist, but it's a tail case and not the main behavior.
-
-**Hypothesis 2 : more frequent expansions don't leave enough time to learn stable behavior.** It explains one thing : the success rate drops to ~0.65-0.70 between 10M and 20M steps, when the pools grow quickly, and recovers to ~0.78 around 40M. But all the seeds have been seen at ~31M steps, and the success rate then stays flat until 100M. The agent had ~70M steps on the full pool without improving, so the expansion speed can't explain the final plateau.
-
-**Why I can't conclude yet.** Several things changed at the same time between the two versions, so no single cause can be isolated :
-- the wall-touch penalty (none → -0.4),
-- the pool expansion frequency (every 1500 / 4000 / 10000 episodes for the easy / medium / hard *stage*, shared by all the pools of the stage → every 1000 / 2000 / 4000),
-- the training length (hard stopped at 151M steps → 100M, medium 29M → 60M),
-- the learning rate schedule (it decayed over a 400M-step budget for hard, so it was still ~7e-6 when the previous run was stopped; it now decays to 2e-6 over 100M).
-
-And each version is a single run.
-
-**Other hypotheses, not tested yet.**
-- *Credit assignment over long detours.* With γ = 0.99 and λ = 0.95, the +100 success reward is worth almost nothing (between 0 and ~1.2) at the start of the longest detours. The agent has almost no signal to learn that moving away from the goal can pay off.
-- *Action noise.* The learned standard deviation of the speed action is far above the action bounds (σ ≈ 8.4 in v4), because with clipped actions nothing pushes it back down while `ent_coef` pushes it up. The entropy keeps rising during all the training. It may make fine speed control noisy. However, σ was even higher in the previous version (≈ 11.2), so it can't explain what changed between the two versions.
-
-**Next steps.** The wall penalty stays at `-0.4`: the data didn't show it as the cause, so it is not tested on its own. I'll run controlled experiments changing one thing at a time :
-
-1. **Expansion frequency and learning rate schedule** (first, since they are the confounding factors left over from the first v4 run). The seed pools go back to the v3 rates, but applied *per pool* instead of per stage : easy 1,500, medium 4,000, hard 10,000 episodes between two doublings, in every stage. The hard budget goes to 150M timesteps with a learning rate `1e-5 → 7e-6` (the one v3 saw), so the hard pool is full after ~75M steps and the learning rate has not decayed to 2e-6 while the curriculum was still growing. Medium keeps 60M timesteps and `5e-5 → 1e-5`.
-2. A longer discount horizon (γ = 0.995-0.998).
-3. A lower `ent_coef` or a capped `log_std`.
+**Conclusion.** The wall penalty removes the wall-hugging, but not the failures : there is no measurable gain over v3 in two full runs, and the agent looks more hesitant in some individual episodes. I consider this direction closed. The wall penalty is not what limits the agent on hard seeds, and the 106 seeds that every run fails are the ones requiring a long detour.
 
 ## Project structure
 
